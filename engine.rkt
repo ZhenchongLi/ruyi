@@ -9,7 +9,7 @@
 
 (define (repo-config-with-path repo new-path)
   (repo-config (repo-config-name repo)
-               new-path
+               (if (string? new-path) (string->path new-path) new-path)
                (repo-config-base-branch repo)
                (repo-config-source-dirs repo)
                (repo-config-source-exts repo)
