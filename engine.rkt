@@ -167,7 +167,13 @@
 ;; Single iteration execution
 ;; ============================================================
 
-(define MAX-REVISIONS 2)
+(define DEFAULT-MAX-REVISIONS 2)
+
+(define (task-max-revisions tsk)
+  "Get max-revisions from task extra, or default."
+  (if (and (task-extra tsk) (hash-has-key? (task-extra tsk) 'max-revisions))
+      (hash-ref (task-extra tsk) 'max-revisions)
+      DEFAULT-MAX-REVISIONS))
 
 (define (inject-feedback tsk feedback)
   "Add reviewer feedback to task's extra hash."
@@ -182,7 +188,8 @@
                  (list (cons 'reviewer-feedback feedback)))))))
 
 (define (execute-one-iteration repo mode-obj tsk)
-  "Implement → Review → Decide. Revise up to MAX-REVISIONS times."
+  "Implement → Review → Decide. Revise up to max-revisions times."
+  (define max-revs (task-max-revisions tsk))
   (with-handlers
     ([exn:fail?
       (lambda (e)
@@ -196,7 +203,7 @@
       ;; 1. Inject reviewer feedback into task
       (define tsk* (inject-feedback tsk feedback))
       (when (> attempt 1)
-        (printf "  Revision ~a/~a with feedback...\n" attempt MAX-REVISIONS))
+        (printf "  Revision ~a/~a with feedback...\n" attempt max-revs))
 
       ;; 2. Agent A implements (full Claude Code agent mode)
       (define ok? (claude-implement repo mode-obj tsk*))
@@ -253,14 +260,14 @@
          (iteration-result 'keep (format "~a (score: ~a)" hash score))]
 
         ;; Needs revision: score 6-7, attempts left
-        [(and (>= score 6) (< attempt MAX-REVISIONS))
+        [(and (>= score 6) (< attempt max-revs))
          (printf "  Score ~a — revising...\n" score)
          (git-revert! repo)
          (define reformulated (format-feedback-for-implementer issues suggestions))
          (revise-loop (add1 attempt) reformulated)]
 
         ;; Max attempts reached with decent score: commit best effort
-        [(and (>= score 6) (>= attempt MAX-REVISIONS))
+        [(and (>= score 6) (>= attempt max-revs))
          (printf "  Score ~a — max revisions, committing best effort\n" score)
          (define hash (git-commit! repo mode-obj tsk))
          (iteration-result 'keep (format "~a (score: ~a, best-effort)" hash score))]

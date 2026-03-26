@@ -223,13 +223,14 @@
      "Each subtask should be completable in a single commit.\n\n"
      "Format:\n"
      "VALIDATE: yes or no (should build/test be run after each subtask? "
-     "Say 'yes' for code changes, 'no' for docs/config/non-code tasks)\n\n"
+     "Say 'yes' for code changes, 'no' for docs/config/non-code tasks)\n"
+     "MAX_REVISIONS: <number> (how many review-revise rounds per subtask, 1-5, default 2)\n\n"
      "OVERVIEW: one sentence summary of the full goal\n\n"
      "SUBTASK 1: <precise description of what to do>\n"
      "SUBTASK 2: <precise description of what to do>\n"
      "SUBTASK 3: ...\n\n"
      "Keep subtasks small. 3-7 subtasks is ideal. Order them by dependency (do first things first).\n"
-     "Output only VALIDATE, OVERVIEW, and SUBTASKs, nothing else."))
+     "Output only VALIDATE, MAX_REVISIONS, OVERVIEW, and SUBTASKs, nothing else."))
 
   (define-values (s-ok? spec)
     (claude-execute repo-path spec-prompt #:model "opus" #:timeout 120))

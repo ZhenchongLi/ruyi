@@ -35,6 +35,13 @@
       (string=? (string-downcase (second m)) "yes")
       #t))  ; default: validate
 
+(define (parse-max-revisions spec)
+  "Extract MAX_REVISIONS line. Returns integer, default 2."
+  (define m (regexp-match #rx"(?i:MAX_REVISIONS[.:]\\s*([0-9]+))" spec))
+  (if m
+      (min 5 (max 1 (or (string->number (second m)) 2)))
+      2))
+
 (define (make-freestyle-mode initial-goal #:clarify? [clarify? #t] #:repo-path [repo-path #f])
   "Create a freestyle mode. If clarify? is #t, runs interactive Q&A first."
   (define refined-spec
@@ -45,10 +52,11 @@
   (define subtasks (parse-subtasks refined-spec))
   (define overview (or (parse-overview refined-spec) initial-goal))
   (define needs-validation? (parse-validate refined-spec))
+  (define max-revisions (parse-max-revisions refined-spec))
   (define remaining-tasks (box subtasks))
 
   (printf "\nGoal: ~a\n" overview)
-  (printf "Validate: ~a\n" (if needs-validation? "yes" "no"))
+  (printf "Validate: ~a | Revisions: ~a\n" (if needs-validation? "yes" "no") max-revisions)
   (printf "Subtasks: ~a\n\n" (length subtasks))
   (for ([st (in-list subtasks)] [i (in-naturals 1)])
     (printf "  ~a. ~a\n" i st))
@@ -68,7 +76,8 @@
                 (make-immutable-hash
                  (list (cons 'goal next-task)
                        (cons 'overview overview)
-                       (cons 'skip-validation (not needs-validation?))))))))
+                       (cons 'skip-validation (not needs-validation?))
+                       (cons 'max-revisions max-revisions)))))))
 
   (define (freestyle-build-prompt repo tsk)
     (define subtask-goal (hash-ref (task-extra tsk) 'goal))
