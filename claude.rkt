@@ -14,10 +14,12 @@
 (define DEFAULT-MODEL "opus")
 (define CLAUDE-TIMEOUT 300) ; seconds
 
-(define (claude-execute repo-path prompt
+(define (claude-execute repo-path-raw prompt
                         #:model [model DEFAULT-MODEL]
                         #:timeout [timeout CLAUDE-TIMEOUT])
   "Call claude -p with prompt via temp files, return (values success? output)."
+  (define repo-path
+    (if (string? repo-path-raw) (string->path repo-path-raw) repo-path-raw))
 
   ;; Write prompt to temp file (avoids shell arg length limits)
   (define tmp-prompt (make-temporary-file "ruyi-prompt-~a.txt"))
