@@ -104,10 +104,9 @@
      ;; Show plan and ask for confirmation
      (printf "done\n\n")
      (displayln (string-trim plan))
-     (printf "\n  Execute? (Enter = yes, 'skip' = next task, or type adjustments) > ")
-     (flush-output)
-     (define confirm (read-line))
-     (define trimmed (if (eof-object? confirm) "" (string-trim confirm)))
+     (printf "\n")
+     (define trimmed
+       (read-line-interactive "  Execute? (Enter = yes, 'skip' = next, or type adjustments) > "))
 
      (cond
        [(string=? trimmed "skip")
@@ -161,12 +160,9 @@
   (printf "Your answers (type each answer, press Enter; empty line when done):\n")
   (define answers
     (let loop ([acc '()])
-      (printf "  > ")
-      (flush-output)
-      (define line (read-line))
+      (define line (read-line-interactive "  > "))
       (cond
-        [(eof-object? line) (reverse acc)]
-        [(string=? (string-trim line) "") (reverse acc)]
+        [(string=? line "") (reverse acc)]
         [else (loop (cons line acc))])))
 
   ;; Step 3: Ask Claude to synthesize into a precise spec
@@ -202,19 +198,39 @@
                        (string-join (map (lambda (a) (string-append "- " a)) answers) "\n"))))
 
   (printf "\n--- Task spec ---\n~a\n-----------------\n\n" final-spec)
-  (printf "Proceed? (Enter = yes, or type changes) > ")
-  (flush-output)
-  (define confirm (read-line))
+  (define confirm (read-line-interactive "Proceed? (Enter = yes, or type changes) > "))
 
   (cond
-    [(or (eof-object? confirm) (string=? (string-trim confirm) ""))
+    [(string=? confirm "")
      final-spec]
-    [(string=? (string-trim confirm) "no")
+    [(string=? confirm "no")
      (printf "Cancelled.\n")
      (exit 0)]
     [else
      ;; User wants changes — append their input
-     (string-append final-spec "\n\nAdditional requirements: " (string-trim confirm))]))
+     (string-append final-spec "\n\nAdditional requirements: " confirm)]))
+
+;; ============================================================
+;; Interactive input helper (supports CJK and line editing)
+;; ============================================================
+
+(define (read-line-interactive prompt-str)
+  "Read a line using bash's read for proper CJK and line editing support."
+  (define tmp-out (make-temporary-file "ruyi-input-~a.txt"))
+  (define cmd
+    (format "/bin/bash -c 'read -e -p \"~a\" line && echo \"$line\" > ~a'"
+            (string-replace prompt-str "'" "'\\''")
+            (path->string tmp-out)))
+  (define exit-code (system/exit-code cmd))
+  (define result
+    (cond
+      [(and (zero? exit-code) (file-exists? tmp-out))
+       (define content (string-trim (file->string tmp-out)))
+       content]
+      [else ""]))
+  (with-handlers ([exn:fail? (lambda (_) (void))])
+    (delete-file tmp-out))
+  result)
 
 ;; ============================================================
 ;; Shell quoting helper
