@@ -14,14 +14,11 @@
 (define (parse-subtasks spec)
   "Extract SUBTASK lines from the spec string."
   (define lines (string-split spec "\n"))
-  (filter (lambda (s) (not (string=? s "")))
-          (map (lambda (line)
-                 (define trimmed (string-trim line))
-                 (cond
-                   [(regexp-match #rx"^SUBTASK [0-9]+[.:] *(.*)" trimmed)
-                    => (lambda (m) (second m))]
-                   [else #f]))
-               lines)))
+  (filter-map (lambda (line)
+                (define trimmed (string-trim line))
+                (define m (regexp-match #rx"^SUBTASK [0-9]+[.:] *(.*)" trimmed))
+                (and m (not (string=? (second m) "")) (second m)))
+              lines))
 
 (define (parse-overview spec)
   "Extract OVERVIEW line from the spec string."
