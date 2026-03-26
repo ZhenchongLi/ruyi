@@ -17,11 +17,11 @@
 Ruyi — as you wish
 
 Usage (run from your project directory):
-  ruyi do <goal>                          Do something (auto-inits if needed)
+  ruyi do <goal>                          Do something (freestyle)
+  ruyi do <mode> [prompt]                 Run a saved mode, with optional prompt
   ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
-  ruyi run <mode>                         Re-run a saved mode
   ruyi modes                              List saved modes
-  ruyi import <file-or-url>               Import a mode file
+  ruyi import <file>                      Import a mode file
   ruyi init [path]                        Manually init (usually not needed)
   ruyi update                             Update ruyi to latest version
   ruyi version                            Show version
@@ -29,8 +29,9 @@ Usage (run from your project directory):
 Examples:
   ruyi do \"add CLI support\"
   ruyi do \"fix auth bug\"                  # another terminal, parallel!
-  ruyi pdo \"add tests\" // \"translate README\"
-  ruyi run my-mode                        # re-run a saved mode"))
+  ruyi do test-coverage                   # run saved mode
+  ruyi do test-coverage \"focus on auth\"   # saved mode + extra prompt
+  ruyi pdo \"add tests\" // \"translate README\""))
 
   (define (load-local-config dir)
     "Load repo-config from .ruyi.rkt in dir. Auto-inits if missing."
@@ -122,34 +123,34 @@ Examples:
     [(or (string=? (first args) "--help") (string=? (first args) "-h"))
      (print-usage)]
 
-    ;; ruyi do <goal...>
+    ;; ruyi do [mode] <goal...>
+    ;; If first arg after "do" is a saved mode name, use it + rest as prompt
+    ;; Otherwise, treat everything as freestyle goal
     [(and (>= (length args) 2) (string=? (first args) "do"))
-     (run-local-do (current-directory) (string-join (cdr args) " "))]
+     (define dir (current-directory))
+     (define rest (cdr args))
+     (define maybe-mode (first rest))
+     (define saved-goal (load-mode dir maybe-mode))
+     (define goal
+       (cond
+         [saved-goal
+          ;; First arg is a mode name
+          (define extra (if (> (length rest) 1)
+                            (string-join (cdr rest) " ")
+                            ""))
+          (if (string=? extra "")
+              saved-goal
+              (string-append saved-goal "\n\nAdditional: " extra))]
+         [else
+          ;; All args are the goal
+          (string-join rest " ")]))
+     (run-local-do dir goal)]
 
     ;; ruyi pdo <goal1> // <goal2> // ...
     [(and (>= (length args) 2) (string=? (first args) "pdo"))
      (define goal-str (string-join (cdr args) " "))
      (define goals (map string-trim (string-split goal-str "//")))
      (run-local-pdo (current-directory) goals)]
-
-    ;; ruyi run <mode> [extra prompt...]
-    [(and (>= (length args) 2) (string=? (first args) "run"))
-     (define dir (current-directory))
-     (define name (second args))
-     (define base-goal (load-mode dir name))
-     (unless base-goal
-       (eprintf "Mode not found: ~a\n" name)
-       (define available (list-modes dir))
-       (when (not (null? available))
-         (eprintf "Available: ~a\n" (string-join available ", ")))
-       (exit 1))
-     (define extra (if (> (length args) 2)
-                       (string-join (cddr args) " ")
-                       ""))
-     (define goal (if (string=? extra "")
-                      base-goal
-                      (string-append base-goal "\n\nAdditional: " extra)))
-     (run-local-do dir goal)]
 
     ;; ruyi modes
     [(and (= (length args) 1) (string=? (first args) "modes"))
