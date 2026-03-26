@@ -9,44 +9,8 @@ The safety contract is code, not prompts. A deterministic Racket loop controls e
 ## See it run
 
 <p align="center">
-  <img src="https://github.com/ZhenchongLi/ruyi/raw/main/assets/ruyi-demo.gif" alt="Ruyi terminal session — coverage mode writing tests, committing passes, reverting failures" width="720" />
+  <img src="https://github.com/ZhenchongLi/ruyi/raw/main/assets/ruyi-demo.gif" alt="Watch Ruyi commit two passing test suites and revert one failure in 90 seconds — only clean iterations survive in git log" width="720" />
 </p>
-
-<details>
-<summary>Can't load the GIF? Here's the same run as text</summary>
-
-```
- ╭─────────────────────────────────────────────────╮
- │  Ruyi — coverage session                        │
- │  Project: my-app (TypeScript, pnpm)             │
- │  Branch:  ruyi/coverage-session                 │
- ╰─────────────────────────────────────────────────╯
-
- Iteration 1 ─────────────────────────────────────
-   Target: src/auth/session.ts (0% coverage)
-   Claude: writing tests...
-   Run:    pnpm test -- session.test.ts
-   Result: ✅ 14 tests pass
-   Commit: a3f9c21 test(session): add 14 tests
-
- Iteration 2 ─────────────────────────────────────
-   Target: src/api/billing.ts (12% coverage)
-   Claude: writing tests...
-   Run:    pnpm test -- billing.test.ts
-   Result: ❌ 3 tests fail (mock DB mismatch)
-   Revert: changes discarded, branch unchanged
-
- Iteration 3 ─────────────────────────────────────
-   Target: src/api/billing.ts (12% coverage)
-   Claude: writing tests (fresh attempt)...
-   Run:    pnpm test -- billing.test.ts
-   Result: ✅ 8 tests pass
-   Commit: e82b4f0 test(billing): add 8 tests
-
- ── Session complete: 2 committed, 1 reverted ──
-```
-
-</details>
 
 **Your git log at the end** — only passing iterations survive:
 
@@ -94,7 +58,7 @@ The Racket engine controls every step. Claude never decides whether to commit or
 
 ## Quick Start
 
-> **Prerequisite:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) must be installed and authenticated before you begin. Run `claude --version` to verify. If you don't have it yet, [install Claude Code first](https://docs.anthropic.com/en/docs/claude-code/overview#installation).
+> **Prerequisites:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) (installed and authenticated — `claude --version` to check), Git, and Racket (or Docker). That's it.
 
 **You never write Racket — it's just the runtime.** The install takes ~2 minutes and adds a `ruyi` alias. You interact with Ruyi in plain English.
 
@@ -173,6 +137,10 @@ Describe your goal in plain English during `ruyi init` — Ruyi selects the righ
 > **"Improve test coverage."** Ruyi writes tests across your codebase. Keeps the ones that pass, reverts the ones that don't. You review one clean diff.
 >
 > **"Fix GitHub issues."** Ruyi picks up open issues one by one, implements a fix, runs your test suite. Passing fix gets committed with the issue linked. Failing fix gets reverted. You wake up to closed issues and a single PR.
+>
+> **"Refactor large files."** A 900-line `utils.ts` becomes five focused modules — each extraction commits only if the build still passes.
+>
+> **"Break up large files."** A 2,000-line controller gets split into route-specific files with all imports rewired. Build breaks? Reverted instantly.
 >
 > **"Add OpenTelemetry tracing to every endpoint."** Freestyle mode — Ruyi instruments your API endpoints one at a time, committing each change only if your test suite still passes. You get incremental, safe progress toward any goal.
 
@@ -258,12 +226,6 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 The safety invariants (atomic commit-or-revert, diff size limits, forbidden file enforcement) are too important to leave to an LLM. The entire engine is ~2,000 lines of Racket — you can read the core loop ([`engine.rkt`](engine.rkt) + [`evolve.rkt`](evolve.rkt) + [`git.rkt`](git.rkt)) in about 10 minutes. You never write or see Racket code — the install script adds a `ruyi` alias and you interact entirely in plain English.
 
 </details>
-
-## Requirements
-
-- **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview)** — installed and authenticated (`claude --version` to check)
-- Git
-- [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`) or Docker
 
 ## License
 
