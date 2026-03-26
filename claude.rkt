@@ -77,6 +77,10 @@
      (kill-thread worker)
      (values #f "TIMEOUT")]))
 
+(define (plan-says-skip? plan-text)
+  "Check if the agent decided to skip planning for a simple task."
+  (regexp-match? #rx"(?i:SKIP_PLAN)" (string-trim plan-text)))
+
 (define (claude-implement repo mode-obj tsk)
   "Plan first, confirm, then implement."
   (define prompt ((mode-build-prompt mode-obj) repo tsk))
@@ -94,7 +98,9 @@
     (string-append
      "You are planning a code change. Do NOT write code yet.\n\n"
      "Task: " goal-text "\n\n"
-     "Output a brief plan:\n"
+     "If this is a simple task (single file, small well-defined change, obvious approach), "
+     "output just: SKIP_PLAN\n\n"
+     "Otherwise, output a brief plan:\n"
      "- What files to create or modify\n"
      "- What changes to make (1-2 lines each)\n"
      "- What tests to add\n\n"
@@ -103,8 +109,14 @@
   (define-values (plan-ok? plan)
     (claude-execute repo-path plan-prompt #:model "sonnet" #:timeout 60))
 
-  ;; Show plan, then auto-execute
+  (define skip-plan?
+    (and plan-ok? (plan-says-skip? plan)))
+
+  ;; Show plan, skip, or auto-execute
   (cond
+    [skip-plan?
+     (printf "simple task, skipping plan\n  Implementing... ")
+     (flush-output)]
     [(not plan-ok?)
      (printf "skipped\n  Implementing... ")
      (flush-output)]
