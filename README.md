@@ -12,15 +12,76 @@ The safety contract is code, not prompts. A deterministic Racket loop controls e
   <img src="https://github.com/ZhenchongLi/ruyi/raw/main/assets/ruyi-demo.gif" alt="Watch Ruyi commit two passing test suites and revert one failure in 90 seconds — only clean iterations survive in git log" width="720" />
 </p>
 
+**Here's what a session looks like mid-run** — iteration 3 fails, gets reverted instantly, and Ruyi moves on:
+
+```
+ ruyi | coverage session on branch ruyi/coverage-session
+
+ Iteration 1 — src/auth/session.ts
+ ✓ Claude wrote 14 tests
+ ✓ pnpm test passed (14/14)
+ ✓ Committed a3f9c21
+
+ Iteration 2 — src/api/billing.ts
+ ✓ Claude wrote 8 tests
+ ✓ pnpm test passed (8/8)
+ ✓ Committed e82b4f0
+
+ Iteration 3 — src/db/connection.ts
+ ✗ Claude wrote 6 tests
+ ✗ pnpm test FAILED (2/6)
+ ↩ Reverted — failed attempts leave no trace   ← main is never touched
+
+ Iteration 4 — src/api/users.ts
+ ✓ Claude wrote 11 tests
+ ✓ pnpm test passed (11/11)
+ ✓ Committed f47a02c
+
+ Session complete: 3 committed, 1 reverted, 0 broken
+```
+
 **Your git log at the end** — only passing iterations survive:
 
 ```
 $ git log --oneline ruyi/coverage-session
 
+f47a02c test(users): add 11 tests for src/api/users.ts
 e82b4f0 test(billing): add 8 tests for src/api/billing.ts
 a3f9c21 test(session): add 14 tests for src/auth/session.ts
-  ↑ failed attempts leave no trace
+  ↑ iteration 3 failed — no trace in history
 ```
+
+## What does `init` look like?
+
+```
+$ cd my-react-app
+$ ruyi init
+
+=== Ruyi Init ===
+
+Detected: TypeScript (react), build: pnpm
+Path:     /Users/you/my-react-app
+
+What would you like ruyi to do?
+Examples:
+  - Improve test coverage
+  - Fix GitHub issues
+  - Refactor large files
+  - Add error handling to all API routes
+  - Any goal you have in mind
+
+> Improve test coverage
+
+Plan: Write tests for untested source files, prioritizing core logic
+Mode: coverage
+
+Created: .ruyi.rkt
+
+Ready! Run:
+  ruyi
+```
+
+Zero config files to write. Ruyi detects your language, build tool, and test framework automatically. Works with TypeScript, Python, C#/.NET, Rust, Go, and Racket — if it has a `package.json`, `pyproject.toml`, `Cargo.toml`, or equivalent, Ruyi picks it up.
 
 ## How it works
 
@@ -58,9 +119,14 @@ The Racket engine controls every step. Claude never decides whether to commit or
 
 ## Quick Start
 
-> **Prerequisites:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) (installed and authenticated — `claude --version` to check), Git, and Racket (or Docker). That's it.
+<details>
+<summary><strong>Prerequisites</strong> — if you use Claude Code, you're most of the way there</summary>
 
-**You never write Racket — it's just the runtime.** The install takes ~2 minutes and adds a `ruyi` alias. You interact with Ruyi in plain English.
+You need three things: **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview)** (installed and authenticated — `claude --version` to check), **Git**, and **Racket** (or Docker as an alternative). You never write Racket — it's just the runtime, like Node or Python.
+
+</details>
+
+The install takes ~2 minutes and adds a `ruyi` alias. You interact with Ruyi in plain English.
 
 **macOS (3 commands):**
 ```bash
@@ -127,22 +193,12 @@ Describe your goal in plain English during `ruyi init` — Ruyi selects the righ
 
 | Mode | You say | What happens |
 |------|---------|-------------|
-| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
-| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
-| `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
-| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
-| `freestyle` | "Add OpenTelemetry tracing to every endpoint" | Any goal — validated by your test suite each iteration |
-| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring |
-
-> **"Improve test coverage."** Ruyi writes tests across your codebase. Keeps the ones that pass, reverts the ones that don't. You review one clean diff.
->
-> **"Fix GitHub issues."** Ruyi picks up open issues one by one, implements a fix, runs your test suite. Passing fix gets committed with the issue linked. Failing fix gets reverted. You wake up to closed issues and a single PR.
->
-> **"Refactor large files."** A 900-line `utils.ts` becomes five focused modules — each extraction commits only if the build still passes.
->
-> **"Break up large files."** A 2,000-line controller gets split into route-specific files with all imports rewired. Build breaks? Reverted instantly.
->
-> **"Add OpenTelemetry tracing to every endpoint."** Freestyle mode — Ruyi instruments your API endpoints one at a time, committing each change only if your test suite still passes. You get incremental, safe progress toward any goal.
+| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing suite, reverts failures |
+| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix, links the issue on commit |
+| `refactor` | "Refactor large files" | Simplifies one file at a time — a 900-line `utils.ts` becomes five focused modules |
+| `filesize` | "Break up large files" | Splits oversized files into modules, rewires imports, reverts if build breaks |
+| `freestyle` | "Add OpenTelemetry tracing" | Any goal — instruments your code one piece at a time, validated by your test suite |
+| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring, keeps improvements, discards regressions |
 
 ## The safety contract
 
@@ -163,17 +219,11 @@ All enforced by the [Racket engine](engine.rkt), not by prompts.
 **32 iterations on this repo. 20 kept, 12 reverted, 0 broken mains.** Every claim below is a link you can click:
 
 - [Every `evolve(doc)` commit in git history](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve) — click any to see the diff
-- [`evolution-log.tsv`](evolution-log.tsv) checked into the repo — every iteration timestamped with its score and keep/discard decision:
+- [`evolution-log.tsv`](evolution-log.tsv) checked into the repo — every iteration logged with its score and keep/discard decision
 
-```
-timestamp                 status   description
-2026-03-26T17:27:26       discard  Score 7.4 < 8.0 threshold
-2026-03-26T17:29:55       keep     Score 8.2 — committed fe74537
-2026-03-26T17:32:30       discard  Score 7.4 < 8.0 threshold
-2026-03-26T17:50:14       keep     Score 8.7 — committed eff19ab
-```
+The evolution log shows the pattern: scores below 8.0 get discarded (no trace on the branch), scores above get committed. Discarded iterations outnumber kept ones — that's the safety contract working as designed.
 
-This README was evolved by Ruyi running in `evolve-doc` mode. Each discarded iteration left no trace on the branch. The proof isn't a claim — it's `git log`.
+This README was evolved by Ruyi running in `evolve-doc` mode. The proof isn't a claim — it's `git log`.
 
 ### Try it yourself in 5 minutes
 
@@ -187,38 +237,6 @@ git log --oneline      # see for yourself
 ```
 
 You'll have committed test files within minutes — no trust required, just `git log`.
-
-## What does `init` look like?
-
-```
-$ cd my-react-app
-$ ruyi init
-
-=== Ruyi Init ===
-
-Detected: TypeScript (react), build: pnpm
-Path:     /Users/you/my-react-app
-
-What would you like ruyi to do?
-Examples:
-  - Improve test coverage
-  - Fix GitHub issues
-  - Refactor large files
-  - Add error handling to all API routes
-  - Any goal you have in mind
-
-> Improve test coverage
-
-Plan: Write tests for untested source files, prioritizing core logic
-Mode: coverage
-
-Created: .ruyi.rkt
-
-Ready! Run:
-  ruyi
-```
-
-Zero config files to write. Ruyi detects your language, build tool, and test framework automatically. Works with TypeScript, Python, C#/.NET, Rust, Go, and Racket — if it has a `package.json`, `pyproject.toml`, `Cargo.toml`, or equivalent, Ruyi picks it up.
 
 <details>
 <summary>Why Racket?</summary>
