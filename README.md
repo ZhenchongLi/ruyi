@@ -2,7 +2,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
 
-**You review one PR, not a disaster recovery incident.** Ruyi runs Claude Code in a loop where every change either commits clean or reverts completely — no half-applied changes, no broken intermediate state, ever.
+**Every AI change either commits clean or reverts completely.** No half-applied changes, no broken intermediate state, ever. You review one PR, not a disaster.
+
+Ruyi runs Claude Code in a loop — each iteration is atomic. Pass tests? Committed. Fail? Gone, as if it never happened.
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 >
@@ -34,48 +36,11 @@ ruyi                     # start evolving
 
 ## What a run looks like
 
-<!-- To record your own: asciinema rec -t "ruyi coverage run" -->
-
 A real `coverage` run on a TypeScript project. Each iteration is independent — a failure in iteration 2 doesn't affect the code committed in iteration 1:
 
-```
-$ ruyi
-
-  ┌──────────────────────────────────────────────────────────────┐
-  │ Ruyi — coverage mode                                         │
-  │ Project: cove (TypeScript/react, pnpm + vitest)              │
-  │ Branch:  ruyi/coverage-session                               │
-  │ Plan:    20 iterations, 500-line diff limit                  │
-  └──────────────────────────────────────────────────────────────┘
-
-  === Iteration 1/20 ═══════════════════════════════════════════
-
-  Task: Write tests for src/auth/session.ts
-  Claude: implementing...
-  Validate: pnpm test ✓ (14 tests, 14 passed)
-  ✅ keep (commit a3f9c21)        ← merged into your branch
-
-  === Iteration 2/20 ═══════════════════════════════════════════
-
-  Task: Write tests for src/api/users.ts
-  Claude: implementing...
-  Validate: pnpm test ✗ (1 assertion failed)
-  ❌ discard (reverted)           ← gone, as if it never happened
-
-  === Iteration 3/20 ═══════════════════════════════════════════
-
-  Task: Write tests for src/api/billing.ts
-  Claude: implementing...
-  Validate: pnpm test ✓ (8 tests, 8 passed)
-  ✅ keep (commit e82b4f0)
-
-  ...
-
-  ┌──────────────────────────────────────────────────────────────┐
-  │ Done: 11 kept, 3 discarded, 6 skipped                       │
-  │ Branch ruyi/coverage-session ready for review                │
-  └──────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="demo.svg" alt="Ruyi coverage run — iterations commit or revert atomically" width="680">
+</p>
 
 **Your git log at the end** — only passing iterations survive:
 
@@ -180,12 +145,16 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 
 ## Battle-tested
 
-Ruyi has been used on real codebases beyond its own repo:
+Ruyi has been used on real codebases, and every claim here is verifiable:
 
-- **Cove** — a TypeScript/React app with vitest. Ruyi ran 20-iteration `coverage` sessions across stores, database repos, hooks, and lib modules, with priority ordering and forbidden-file protection on config files. The same atomic guarantee held across pnpm build + test validation.
-- **Ruyi itself** — `coverage` mode writing tests for the core Racket engine, and `evolve-doc` mode writing this README (24 iterations logged in [`evolution-log.tsv`](evolution-log.tsv), 7 kept, 17 discarded — every commit hash links to the real diff on GitHub).
+- **This README** — written by Ruyi's `evolve-doc` mode. 24 iterations logged in [`evolution-log.tsv`](evolution-log.tsv): 7 kept, 17 discarded. Every kept commit is a real diff you can click through on GitHub:
+  - [`5044d5d`](https://github.com/ZhenchongLi/ruyi/commit/5044d5d) — first kept draft (score: 7.6)
+  - [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) — biggest single jump (score: 8.7)
+  - [`7af276c`](https://github.com/ZhenchongLi/ruyi/commit/7af276c) — latest iteration (score: 8.7)
+- **Ruyi's own engine** — `coverage` mode writing tests for the core Racket modules ([iteration log](evolution-log.tsv))
+- **Private TypeScript/React apps** — 20-iteration `coverage` sessions across stores, database repos, hooks, and lib modules with priority ordering and forbidden-file protection. The same atomic guarantee held across pnpm build + test validation.
 
-The evolution log for this README tells the full story: scores started at 7.6, climbed to 8.7 through iterative improvement, with the majority of attempts discarded for not clearing the quality bar. That's the system working as designed — most AI output isn't good enough, and Ruyi's job is to keep only what passes.
+The evolution log tells the full story: scores started at 7.6, climbed to 8.7, with the majority of attempts discarded for not clearing the quality bar. That's the system working as designed — most AI output isn't good enough, and Ruyi's job is to keep only what passes.
 
 | Metric | Value |
 |--------|-------|

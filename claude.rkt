@@ -87,6 +87,82 @@
       (begin (printf "failed\n") #f)))
 
 ;; ============================================================
+;; Interactive Claude: clarify requirements before execution
+;; ============================================================
+
+(define (claude-clarify repo-path initial-goal)
+  "Use Claude interactively to clarify a vague goal into a precise spec.
+   Returns a detailed task description string."
+  (printf "\nClarifying your goal with Claude...\n\n")
+
+  ;; Step 1: Ask Claude to generate clarifying questions
+  (define question-prompt
+    (string-append
+     "A user wants to make a change to their project. Their goal is:\n\n"
+     "\"" initial-goal "\"\n\n"
+     "Ask 2-3 short clarifying questions to understand exactly what they need.\n"
+     "Format: one question per line, numbered.\n"
+     "Only output the questions, nothing else."))
+
+  (define-values (q-ok? questions)
+    (claude-execute repo-path question-prompt #:model "sonnet" #:timeout 30))
+
+  (unless q-ok?
+    (printf "Could not generate questions. Using goal as-is.\n")
+    (printf "~a\n\n" initial-goal))
+
+  (when q-ok?
+    (displayln questions)
+    (printf "\n"))
+
+  ;; Step 2: Collect user answers
+  (printf "Your answers (type each answer, press Enter; empty line when done):\n")
+  (define answers
+    (let loop ([acc '()])
+      (printf "  > ")
+      (flush-output)
+      (define line (read-line))
+      (cond
+        [(eof-object? line) (reverse acc)]
+        [(string=? (string-trim line) "") (reverse acc)]
+        [else (loop (cons line acc))])))
+
+  ;; Step 3: Ask Claude to synthesize into a precise spec
+  (define spec-prompt
+    (string-append
+     "A user wants: \"" initial-goal "\"\n\n"
+     (if q-ok?
+         (string-append "Questions asked:\n" questions "\n\n")
+         "")
+     "User's answers:\n"
+     (string-join (map (lambda (a) (string-append "- " a)) answers) "\n")
+     "\n\n"
+     "Synthesize this into a precise, actionable task description.\n"
+     "Include: what files to create/modify, what behavior to implement, what to test.\n"
+     "Output the task description only, no commentary."))
+
+  (define-values (s-ok? spec)
+    (claude-execute repo-path spec-prompt #:model "sonnet" #:timeout 30))
+
+  (define final-spec
+    (if s-ok? (string-trim spec) initial-goal))
+
+  (printf "\n--- Task spec ---\n~a\n-----------------\n\n" final-spec)
+  (printf "Proceed? (Enter = yes, or type changes) > ")
+  (flush-output)
+  (define confirm (read-line))
+
+  (cond
+    [(or (eof-object? confirm) (string=? (string-trim confirm) ""))
+     final-spec]
+    [(string=? (string-trim confirm) "no")
+     (printf "Cancelled.\n")
+     (exit 0)]
+    [else
+     ;; User wants changes — append their input
+     (string-append final-spec "\n\nAdditional requirements: " (string-trim confirm))]))
+
+;; ============================================================
 ;; Shell quoting helper
 ;; ============================================================
 
