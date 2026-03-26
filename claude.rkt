@@ -165,7 +165,7 @@
         [(string=? line "") (reverse acc)]
         [else (loop (cons line acc))])))
 
-  ;; Step 3: Ask Claude to synthesize into a precise spec
+  ;; Step 3: Ask Claude to synthesize into precise subtasks
   (printf "Synthesizing task spec...\n")
   (define spec-prompt
     (string-append
@@ -177,24 +177,29 @@
      "User's answers:\n"
      (string-join (map (lambda (a) (string-append "- " a)) answers) "\n")
      "\n\n"
-     "Based on their answers, write a precise, actionable task description.\n"
-     "Include:\n"
-     "- Exactly what to implement (specific behavior)\n"
-     "- Which parts of the codebase to modify\n"
-     "- How to test it\n\n"
-     "Write in imperative mood. Be specific. Output only the task description."))
+     "Break this into small, independent subtasks that can be implemented one at a time.\n"
+     "Each subtask should be completable in a single commit.\n\n"
+     "Format:\n"
+     "OVERVIEW: one sentence summary of the full goal\n\n"
+     "SUBTASK 1: <precise description of what to do>\n"
+     "SUBTASK 2: <precise description of what to do>\n"
+     "SUBTASK 3: ...\n\n"
+     "Keep subtasks small. 3-7 subtasks is ideal. Order them by dependency (do first things first).\n"
+     "Output only the overview and subtasks, nothing else."))
 
   (define-values (s-ok? spec)
-    (claude-execute repo-path spec-prompt #:model "sonnet" #:timeout 60))
+    (claude-execute repo-path spec-prompt #:model "opus" #:timeout 120))
 
   (unless s-ok?
-    (printf "Warning: synthesis failed, using answers directly.\n"))
+    (printf "Warning: synthesis failed, using goal directly.\n"))
 
   (define final-spec
     (if (and s-ok? (> (string-length (string-trim spec)) 0))
         (string-trim spec)
-        ;; Fallback: combine goal + answers
-        (string-append initial-goal "\n\nUser clarifications:\n"
+        ;; Fallback: combine goal + answers as single task
+        (string-append "OVERVIEW: " initial-goal "\n\n"
+                       "SUBTASK 1: " initial-goal "\n"
+                       "User clarifications:\n"
                        (string-join (map (lambda (a) (string-append "- " a)) answers) "\n"))))
 
   (printf "\n--- Task spec ---\n~a\n-----------------\n\n" final-spec)
