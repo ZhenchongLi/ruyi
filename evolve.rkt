@@ -132,17 +132,23 @@ Examples:
      (define goals (map string-trim (string-split goal-str "//")))
      (run-local-pdo (current-directory) goals)]
 
-    ;; ruyi run <mode>
-    [(and (= (length args) 2) (string=? (first args) "run"))
+    ;; ruyi run <mode> [extra prompt...]
+    [(and (>= (length args) 2) (string=? (first args) "run"))
      (define dir (current-directory))
      (define name (second args))
-     (define goal (load-mode dir name))
-     (unless goal
+     (define base-goal (load-mode dir name))
+     (unless base-goal
        (eprintf "Mode not found: ~a\n" name)
        (define available (list-modes dir))
        (when (not (null? available))
          (eprintf "Available: ~a\n" (string-join available ", ")))
        (exit 1))
+     (define extra (if (> (length args) 2)
+                       (string-join (cddr args) " ")
+                       ""))
+     (define goal (if (string=? extra "")
+                      base-goal
+                      (string-append base-goal "\n\nAdditional: " extra)))
      (run-local-do dir goal)]
 
     ;; ruyi modes
