@@ -151,8 +151,6 @@
    "   '" (symbol->string test-pat) "  ; test-pattern\n"
    "   " (if test-dir (format "\"~a\"" test-dir) "#f") "  ; test-dir\n"
    "   '" (format "~s" forbidden) "  ; forbidden-files\n"
-   "   '" (format "~s" build-cmds) "  ; validate-commands (build)\n"
-   ;; Append test commands to validate
    "   '" (format "~s" (append build-cmds test-cmds)) "  ; validate-commands\n"
    "   '()  ; priority-dirs\n"
    "   '()  ; context-files\n"
