@@ -1,6 +1,6 @@
 #!/bin/bash
 # Ruyi — as you wish
-RUYI_DIR="$(cd "$(dirname "$0")" && pwd)"
+RUYI_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || readlink "$0" 2>/dev/null || echo "$0")")" && pwd)"
 
 # --- Auto-update check (background, non-blocking) ---
 _ruyi_check_update() {
