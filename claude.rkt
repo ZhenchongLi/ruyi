@@ -80,18 +80,23 @@
   (define prompt ((mode-build-prompt mode-obj) repo tsk))
   (define repo-path (repo-config-path repo))
 
-  ;; Step 1: Ask Claude to output a plan (not implement yet)
+  ;; Step 1: Ask Claude to output a plan (lightweight, no full context)
   (printf "  Planning... ")
   (flush-output)
+  (define task-desc (task-description tsk))
+  (define goal-text
+    (if (and (task-extra tsk) (hash-has-key? (task-extra tsk) 'goal))
+        (hash-ref (task-extra tsk) 'goal)
+        task-desc))
   (define plan-prompt
     (string-append
-     prompt
-     "\n\n---\n"
-     "WAIT. Before implementing, first output a brief plan:\n"
-     "- What files you will create or modify\n"
-     "- What changes you will make (1-2 lines each)\n"
-     "- What tests you will add\n\n"
-     "Output ONLY the plan. Do NOT write any code yet. Start with 'Plan:'\n"))
+     "You are planning a code change. Do NOT write code yet.\n\n"
+     "Task: " goal-text "\n\n"
+     "Output a brief plan:\n"
+     "- What files to create or modify\n"
+     "- What changes to make (1-2 lines each)\n"
+     "- What tests to add\n\n"
+     "Start with 'Plan:' and keep it concise."))
 
   (define-values (plan-ok? plan)
     (claude-execute repo-path plan-prompt #:model "sonnet" #:timeout 60))
