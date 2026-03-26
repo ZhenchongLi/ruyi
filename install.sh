@@ -8,8 +8,15 @@ if ! command -v racket &> /dev/null; then
   echo "Installing Racket..."
   if command -v brew &> /dev/null; then
     brew install minimal-racket
+  elif command -v apt-get &> /dev/null; then
+    sudo apt-get update && sudo apt-get install -y racket
+  elif command -v dnf &> /dev/null; then
+    sudo dnf install -y racket
   else
-    echo "Error: Racket is required. Install it from https://racket-lang.org/ or install Homebrew first."
+    echo "Error: Racket is required. Install it from https://racket-lang.org/"
+    echo "  macOS:  brew install minimal-racket"
+    echo "  Ubuntu: sudo apt-get install racket"
+    echo "  Fedora: sudo dnf install racket"
     exit 1
   fi
 else

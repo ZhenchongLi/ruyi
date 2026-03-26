@@ -6,6 +6,53 @@
 
 The control loop is deterministic Racket, not an LLM — safety guarantees are code, not prompts. ~2,000 lines you can [read yourself](engine.rkt).
 
+> *This README was written by Ruyi's own `evolve-doc` mode — [28 iterations](evolution-log.tsv), 14 kept, 14 discarded. Every kept version is a real commit you can diff on GitHub.*
+
+## What a run looks like
+
+A real `coverage` run on a TypeScript project. Each iteration is independent — a failure doesn't affect previously committed code:
+
+```
+ ╭─────────────────────────────────────────────────╮
+ │  Ruyi — coverage session                        │
+ │  Project: my-app (TypeScript, pnpm)             │
+ │  Branch:  ruyi/coverage-session                 │
+ ╰─────────────────────────────────────────────────╯
+
+ Iteration 1 ─────────────────────────────────────
+   Target: src/auth/session.ts (0% coverage)
+   Claude: writing tests...
+   Run:    pnpm test -- session.test.ts
+   Result: ✅ 14 tests pass
+   Commit: a3f9c21 test(session): add 14 tests
+
+ Iteration 2 ─────────────────────────────────────
+   Target: src/api/billing.ts (12% coverage)
+   Claude: writing tests...
+   Run:    pnpm test -- billing.test.ts
+   Result: ❌ 3 tests fail (mock DB mismatch)
+   Revert: changes discarded, branch unchanged
+
+ Iteration 3 ─────────────────────────────────────
+   Target: src/api/billing.ts (12% coverage)
+   Claude: writing tests (fresh attempt)...
+   Run:    pnpm test -- billing.test.ts
+   Result: ✅ 8 tests pass
+   Commit: e82b4f0 test(billing): add 8 tests
+
+ ── Session complete: 2 committed, 1 reverted ──
+```
+
+**Your git log at the end** — only passing iterations survive:
+
+```
+$ git log --oneline ruyi/coverage-session
+
+e82b4f0 test(billing): add 8 tests for src/api/billing.ts
+a3f9c21 test(session): add 14 tests for src/auth/session.ts
+  ↑ failed attempts leave no trace
+```
+
 ```
          ┌──────────┐
          │ Pick task │
@@ -36,19 +83,34 @@ The control loop is deterministic Racket, not an LLM — safety guarantees are c
 
 ## Quick Start
 
-**Option A — clone and alias** (3 commands, nothing hidden):
-
-```bash
-brew install minimal-racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
-```
-
-**Option B — install script** ([read it first](https://github.com/ZhenchongLi/ruyi/blob/main/install.sh) — it just does the three steps above):
+**Install** ([read the script first](https://github.com/ZhenchongLi/ruyi/blob/main/install.sh) — it clones the repo, installs Racket if missing, adds a `ruyi` alias):
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
 ```
+
+The install script auto-detects your OS — works on macOS (Homebrew), Ubuntu/Debian (apt), and Fedora (dnf).
+
+<details>
+<summary>Prefer manual install? 3 commands:</summary>
+
+**macOS:**
+```bash
+brew install minimal-racket
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get install racket
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.bashrc
+```
+
+Open a new terminal (or `source` your shell rc) to pick up the alias.
+
+</details>
 
 Then:
 
@@ -82,75 +144,21 @@ This is what separates Ruyi from "just run Claude in a loop":
 - Respects forbidden files — won't touch what you protect
 - You review one clean PR at the end
 
-## What a run looks like
-
-A real `coverage` run on a TypeScript project. Each iteration is independent — a failure in iteration 2 doesn't affect the code committed in iteration 1:
-
-<p align="center">
-  <img src="demo.svg" alt="Ruyi coverage run — iterations commit or revert atomically" width="680">
-</p>
-
-<details>
-<summary>Can't see the animation? Here's the terminal output:</summary>
-
-```
- ╭─────────────────────────────────────────────────╮
- │  Ruyi — coverage session                        │
- │  Project: my-app (TypeScript, pnpm)             │
- │  Branch:  ruyi/coverage-session                 │
- ╰─────────────────────────────────────────────────╯
-
- Iteration 1 ─────────────────────────────────────
-   Target: src/auth/session.ts (0% coverage)
-   Claude: writing tests...
-   Run:    pnpm test -- session.test.ts
-   Result: ✅ 14 tests pass
-   Commit: a3f9c21 test(session): add 14 tests
-
- Iteration 2 ─────────────────────────────────────
-   Target: src/api/billing.ts (12% coverage)
-   Claude: writing tests...
-   Run:    pnpm test -- billing.test.ts
-   Result: ❌ 3 tests fail (mock DB mismatch)
-   Revert: changes discarded, branch unchanged
-
- Iteration 3 ─────────────────────────────────────
-   Target: src/api/billing.ts (12% coverage)
-   Claude: writing tests (fresh attempt)...
-   Run:    pnpm test -- billing.test.ts
-   Result: ✅ 8 tests pass
-   Commit: e82b4f0 test(billing): add 8 tests
-
- ── Session complete: 2 committed, 1 reverted ──
-```
-
-</details>
-
-**Your git log at the end** — only passing iterations survive:
-
-```
-$ git log --oneline ruyi/coverage-session
-
-e82b4f0 test(billing): add 8 tests for src/api/billing.ts
-a3f9c21 test(session): add 14 tests for src/auth/session.ts
-  ↑ failed attempts leave no trace
-```
-
 ## Verified on real projects
 
 Every claim is verifiable — click the commits:
 
-- **This README** — written and iterated by Ruyi's `evolve-doc` mode. [27 iterations](evolution-log.tsv): 13 kept, 14 discarded. Every kept commit is a real diff you can inspect on GitHub:
+- **This README** — written and iterated by Ruyi's `evolve-doc` mode. [28 iterations](evolution-log.tsv): 14 kept, 14 discarded. Every kept commit is a real diff you can inspect on GitHub:
   - [`5044d5d`](https://github.com/ZhenchongLi/ruyi/commit/5044d5d) — first kept draft (score: 7.6)
   - [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) — biggest single jump (score: 8.7)
-  - [`f50d827`](https://github.com/ZhenchongLi/ruyi/commit/f50d827) — latest iteration (score: 8.6)
+  - [`f98e0be`](https://github.com/ZhenchongLi/ruyi/commit/f98e0be) — latest iteration (score: 8.6)
 - **Ruyi's own engine** — `coverage` mode writing tests for the core Racket modules ([iteration log](evolution-log.tsv))
 - **Try it yourself** — clone any public repo with tests, run `ruyi init`, and watch. Start with a small repo to see the commit-or-revert cycle in under a minute.
 
 | Metric | Value |
 |--------|-------|
-| Total iterations logged | 27 |
-| Kept / Discarded | 13 / 14 |
+| Total iterations logged | 28 |
+| Kept / Discarded | 14 / 14 |
 | Score range (README) | 7.6 → 8.7 |
 | Broken main branches | 0 |
 
@@ -199,7 +207,10 @@ The safety invariants (atomic commit-or-revert, diff size limits, forbidden file
 
 - [Claude Code](https://claude.ai/code) CLI installed and authenticated
 - Git
-- [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`, or `brew install minimal-racket`)
+- [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`)
+  - macOS: `brew install minimal-racket`
+  - Ubuntu/Debian: `sudo apt-get install racket`
+  - Fedora: `sudo dnf install racket`
 
 ## License
 
