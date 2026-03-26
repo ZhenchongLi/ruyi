@@ -151,6 +151,10 @@
     ;; Racket
     [(for/or ([f (directory-list path)])
        (string-suffix? (path->string f) ".rkt"))
+     (define rkt-files
+       (for/list ([f (directory-list path)]
+                  #:when (string-suffix? (path->string f) ".rkt"))
+         (path->string f)))
      (project-info
       "racket"
       #f
@@ -160,7 +164,7 @@
       '("compiled/")
       'sibling
       #f
-      '(("raco" "make" "."))
+      (list (cons "raco" (cons "make" rkt-files)))  ; build: compile all .rkt in root
       '(("raco" "test" "."))
       '())]
 
