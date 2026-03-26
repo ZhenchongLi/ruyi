@@ -86,10 +86,20 @@
           (hash-ref (task-extra tsk) 'user-context)
           ""))
 
+    (define reviewer-fb
+      (if (hash-has-key? (task-extra tsk) 'reviewer-feedback)
+          (hash-ref (task-extra tsk) 'reviewer-feedback)
+          ""))
+
     (string-append
      "You are implementing one step of a larger goal.\n\n"
      "## Overall goal\n\n" full-overview "\n\n"
      "## This step\n\n" subtask-goal "\n\n"
+     (if (string=? reviewer-fb "")
+         ""
+         (string-append "## Issues found in your previous attempt\n\n"
+                        reviewer-fb "\n\n"
+                        "Fix these issues in this attempt.\n\n"))
      (if (string=? user-ctx "")
          ""
          (string-append "## User feedback from previous iterations\n\n"

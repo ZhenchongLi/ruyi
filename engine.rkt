@@ -1,6 +1,6 @@
 #lang racket/base
 (require racket/format racket/list racket/string racket/file racket/port racket/match)
-(require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt" "judge.rkt")
+(require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt" "judge.rkt" "review.rkt")
 (provide evolution-loop evolution-loop/worktree run-parallel-evolutions)
 
 ;; ============================================================
@@ -167,7 +167,22 @@
 ;; Single iteration execution
 ;; ============================================================
 
+(define MAX-REVISIONS 2)
+
+(define (inject-feedback tsk feedback)
+  "Add reviewer feedback to task's extra hash."
+  (if (string=? feedback "")
+      tsk
+      (task (task-source-file tsk)
+            (task-description tsk)
+            (task-priority tsk)
+            (if (task-extra tsk)
+                (hash-set (task-extra tsk) 'reviewer-feedback feedback)
+                (make-immutable-hash
+                 (list (cons 'reviewer-feedback feedback)))))))
+
 (define (execute-one-iteration repo mode-obj tsk)
+  "Implement → Review → Decide. Revise up to MAX-REVISIONS times."
   (with-handlers
     ([exn:fail?
       (lambda (e)
@@ -176,84 +191,85 @@
           (git-revert! repo))
         (iteration-result 'discard (exn-message e)))])
 
-    ;; 1. Call Claude to implement
-    (define ok? (claude-implement repo mode-obj tsk))
-    (unless ok?
-      (git-revert! repo)
-      (raise (make-exn:fail "Claude failed" (current-continuation-marks))))
+    (let revise-loop ([attempt 1] [feedback ""])
 
-    ;; 2. Check forbidden files
-    (define forbidden (git-check-forbidden-files repo))
-    (unless (null? forbidden)
-      (git-revert! repo)
-      (raise (make-exn:fail
-              (format "Touched forbidden: ~a" (string-join forbidden ", "))
-              (current-continuation-marks))))
+      ;; 1. Inject reviewer feedback into task
+      (define tsk* (inject-feedback tsk feedback))
+      (when (> attempt 1)
+        (printf "  Revision ~a/~a with feedback...\n" attempt MAX-REVISIONS))
 
-    ;; 3. Check diff size
-    (define diff-lines (git-diff-line-count repo))
-    (printf "  Diff: ~a lines\n" diff-lines)
-    (when (> diff-lines (repo-config-max-diff-lines repo))
-      (git-revert! repo)
-      (raise (make-exn:fail
-              (format "Diff too large: ~a > ~a"
-                      diff-lines (repo-config-max-diff-lines repo))
-              (current-continuation-marks))))
+      ;; 2. Agent A implements (full Claude Code agent mode)
+      (define ok? (claude-implement repo mode-obj tsk*))
+      (unless ok?
+        (git-revert! repo)
+        (raise (make-exn:fail "Claude failed" (current-continuation-marks))))
 
-    ;; 4. Validate — skip, Judge, or build+test
-    (define skip-validation?
-      (and (task-extra tsk)
-           (hash-has-key? (task-extra tsk) 'skip-validation)
-           (hash-ref (task-extra tsk) 'skip-validation)))
-    (define has-rubric?
-      (and (task-extra tsk) (hash-has-key? (task-extra tsk) 'rubric)))
+      ;; 3. Safety checks
+      (define forbidden (git-check-forbidden-files repo))
+      (unless (null? forbidden)
+        (git-revert! repo)
+        (raise (make-exn:fail
+                (format "Touched forbidden: ~a" (string-join forbidden ", "))
+                (current-continuation-marks))))
 
-    (cond
-      ;; Skip validation (agent decided it's not needed)
-      [skip-validation?
-       (define hash (git-commit! repo mode-obj tsk))
-       (iteration-result 'keep hash)]
+      (define diff-lines (git-diff-line-count repo))
+      (printf "  Diff: ~a lines\n" diff-lines)
+      (when (> diff-lines (repo-config-max-diff-lines repo))
+        (git-revert! repo)
+        (raise (make-exn:fail
+                (format "Diff too large: ~a > ~a"
+                        diff-lines (repo-config-max-diff-lines repo))
+                (current-continuation-marks))))
 
-      ;; Judge mode: score with LLM
-      [has-rubric?
-       (define rubric (hash-ref (task-extra tsk) 'rubric))
-       (define min-score (hash-ref (task-extra tsk) 'min-score 7.0))
-       (define set-feedback!
-         (hash-ref (task-extra tsk) 'set-feedback! (lambda (s w f) (void))))
-       (define file-path (task-source-file tsk))
-       (define content
-         (if (file-exists? file-path) (file->string file-path) ""))
-       (define-values (score weaknesses feedback)
-         (judge-evaluate (repo-config-path repo) rubric content))
-       (set-feedback! score weaknesses feedback)
-       (journal-iteration! repo
-                           (format "~a" (hash-ref (task-extra tsk) 'min-score 0))
-                           (if (>= score min-score) "keep" "discard")
-                           (task-description tsk)
-                           #:score score
-                           #:weaknesses weaknesses
-                           #:feedback feedback)
-       (cond
-         [(>= score min-score)
-          (define hash (git-commit! repo mode-obj tsk))
-          (iteration-result 'keep (format "~a (score: ~a)" hash score))]
-         [else
-          (printf "  Score ~a < ~a\n" score min-score)
+      ;; 4. Optional build/test validation (if configured and not skipped)
+      (define skip-validation?
+        (and (task-extra tsk)
+             (hash-has-key? (task-extra tsk) 'skip-validation)
+             (hash-ref (task-extra tsk) 'skip-validation)))
+
+      (unless skip-validation?
+        (define validation (run-validation-gate repo))
+        (unless (validation-result-passed? validation)
           (git-revert! repo)
-          (iteration-result 'discard (format "Score ~a < ~a" score min-score))])]
+          (raise (make-exn:fail
+                  (format "Validation failed: ~a"
+                          (validation-result-failed-step validation))
+                  (current-continuation-marks)))))
 
-      ;; Standard mode: build + test
-      [else
-       (define validation (run-validation-gate repo))
-       (cond
-         [(validation-result-passed? validation)
-          (define hash (git-commit! repo mode-obj tsk))
-          (iteration-result 'keep hash)]
-         [else
-          (git-revert! repo)
-          (iteration-result 'discard
-                            (format "Validation failed: ~a"
-                                    (validation-result-failed-step validation)))])])))
+      ;; 5. Agent B reviews (independent, sees only diff + task)
+      (define diff-text
+        (with-handlers ([exn:fail? (lambda (_) "")])
+          (shell! repo "git" "diff" "HEAD")))
+      (define-values (score issues suggestions)
+        (review-changes (repo-config-path repo)
+                        (task-description tsk)
+                        diff-text))
+
+      ;; 6. Ruyi decides (hardcoded thresholds)
+      (cond
+        ;; Approved: score >= 8
+        [(>= score 8)
+         (define hash (git-commit! repo mode-obj tsk))
+         (iteration-result 'keep (format "~a (score: ~a)" hash score))]
+
+        ;; Needs revision: score 6-7, attempts left
+        [(and (>= score 6) (< attempt MAX-REVISIONS))
+         (printf "  Score ~a — revising...\n" score)
+         (git-revert! repo)
+         (define reformulated (format-feedback-for-implementer issues suggestions))
+         (revise-loop (add1 attempt) reformulated)]
+
+        ;; Max attempts reached with decent score: commit best effort
+        [(and (>= score 6) (>= attempt MAX-REVISIONS))
+         (printf "  Score ~a — max revisions, committing best effort\n" score)
+         (define hash (git-commit! repo mode-obj tsk))
+         (iteration-result 'keep (format "~a (score: ~a, best-effort)" hash score))]
+
+        ;; Rejected: score < 6
+        [else
+         (printf "  Score ~a — rejected\n" score)
+         (git-revert! repo)
+         (iteration-result 'discard (format "Rejected (score: ~a)" score))]))))
 
 ;; ============================================================
 ;; Worktree-based evolution (for parallel execution)
