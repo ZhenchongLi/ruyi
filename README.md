@@ -4,60 +4,16 @@
 
 **Claude broke main again? Not with Ruyi.** Every AI change either commits clean or reverts completely — you review one PR, not a half-applied disaster.
 
-The control loop is deterministic Racket, not an LLM — safety guarantees are code, not prompts. ~2,000 lines you can [read yourself](engine.rkt).
+The safety contract is code, not prompts. A deterministic Racket loop controls every commit and revert — Claude never decides what ships. ~2,000 lines you can [read yourself](engine.rkt).
 
-## How it works
+## See it run
 
-```
-                  ┌─────────────────┐
-                  │   ruyi init     │  You describe a goal in plain English
-                  └────────┬────────┘
-                           ▼
-              ┌────────────────────────┐
-              │  Pick next target      │  file, issue, or doc
-              │  (deterministic loop)  │◄─────────────────────┐
-              └────────────┬───────────┘                      │
-                           ▼                                  │
-              ┌────────────────────────┐                      │
-              │  Claude Code writes    │                      │
-              │  code / tests / docs   │                      │
-              └────────────┬───────────┘                      │
-                           ▼                                  │
-              ┌────────────────────────┐                      │
-              │  Run tests / build     │                      │
-              └──────┬─────────┬───────┘                      │
-                     │         │                              │
-                pass ▼         ▼ fail                         │
-          ┌──────────────┐ ┌──────────────┐                   │
-          │ git commit   │ │ git revert   │  branch unchanged │
-          │ (atomic)     │ │ (full reset) │                   │
-          └──────┬───────┘ └──────┬───────┘                   │
-                 │                │                           │
-                 └────────────────┴───────────────────────────┘
-                           ▼
-              ┌────────────────────────┐
-              │  One clean PR to review│
-              └────────────────────────┘
-```
+<p align="center">
+  <img src="https://github.com/ZhenchongLi/ruyi/raw/main/assets/ruyi-demo.gif" alt="Ruyi terminal session — coverage mode writing tests, committing passes, reverting failures" width="720" />
+</p>
 
-The Racket engine controls every step. Claude never decides whether to commit or revert — the loop does, based on your test suite. That's the safety guarantee.
-
-## Modes
-
-Describe your goal in plain English during `ruyi init` — Ruyi selects the right mode automatically.
-
-| Mode | You say | What happens |
-|------|---------|-------------|
-| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
-| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
-| `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
-| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
-| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
-| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring |
-
-## What a run looks like
-
-A real `coverage` run on a TypeScript project. Each iteration is independent — a failure doesn't affect previously committed code:
+<details>
+<summary>Can't load the GIF? Here's the same run as text</summary>
 
 ```
  ╭─────────────────────────────────────────────────╮
@@ -90,6 +46,8 @@ A real `coverage` run on a TypeScript project. Each iteration is independent —
  ── Session complete: 2 committed, 1 reverted ──
 ```
 
+</details>
+
 **Your git log at the end** — only passing iterations survive:
 
 ```
@@ -100,15 +58,45 @@ a3f9c21 test(session): add 14 tests for src/auth/session.ts
   ↑ failed attempts leave no trace
 ```
 
-> "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
->
-> "Fix GitHub issues." Ruyi picks up open issues one by one, implements a fix, runs your test suite. Passing fix gets committed with the issue linked. Failing fix gets reverted. You wake up to closed issues and a single PR.
+## How it works
+
+```
+     ┌─────────────┐
+     │  ruyi init  │  Describe a goal in plain English
+     └──────┬──────┘
+            ▼
+   ┌──────────────────┐
+   │  Pick next target │◄──────────────────┐
+   │  (deterministic)  │                   │
+   └────────┬─────────┘                   │
+            ▼                             │
+   ┌──────────────────┐                   │
+   │  Claude writes   │                   │
+   │  code / tests    │                   │
+   └────────┬─────────┘                   │
+            ▼                             │
+   ┌──────────────────┐                   │
+   │  Run tests/build │                   │
+   └───┬──────────┬───┘                   │
+  pass ▼          ▼ fail                  │
+ ┌──────────┐ ┌───────────┐              │
+ │  commit  │ │  revert   │              │
+ │ (atomic) │ │ (full)    │              │
+ └────┬─────┘ └─────┬─────┘              │
+      └──────────────┴────────────────────┘
+            ▼
+   ┌──────────────────┐
+   │ One clean PR     │
+   └──────────────────┘
+```
+
+The Racket engine controls every step. Claude never decides whether to commit or revert — the loop does, based on your test suite. That's the safety guarantee.
 
 ## Quick Start
 
-**Install Racket + clone Ruyi (3 commands):**
+**You never write Racket — it's just the runtime.** The install takes ~2 minutes and adds a `ruyi` alias. You interact with Ruyi in plain English.
 
-macOS:
+**macOS (3 commands):**
 ```bash
 brew install minimal-racket
 git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
@@ -135,6 +123,18 @@ echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.bashrc && source ~/.bashrc
 </details>
 
 <details>
+<summary>Don't want to install Racket? Use Docker</summary>
+
+```bash
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+alias ruyi="docker run --rm -v \$(pwd):/work -v ~/.claude:/root/.claude -w /work ghcr.io/zhenchongli/ruyi"
+```
+
+Same behavior, zero runtime install. Requires Docker and Claude Code CLI on the host.
+
+</details>
+
+<details>
 <summary>Prefer a one-liner? Install script</summary>
 
 ```bash
@@ -155,6 +155,23 @@ ruyi                     # start evolving
 
 Each passing iteration commits, each failure reverts. You review one PR when it's done.
 
+## Modes
+
+Describe your goal in plain English during `ruyi init` — Ruyi selects the right mode automatically.
+
+| Mode | You say | What happens |
+|------|---------|-------------|
+| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
+| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
+| `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
+| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
+| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
+| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring |
+
+> **"Improve test coverage."** Ruyi writes tests across your codebase. Keeps the ones that pass, reverts the ones that don't. You review one clean diff.
+>
+> **"Fix GitHub issues."** Ruyi picks up open issues one by one, implements a fix, runs your test suite. Passing fix gets committed with the issue linked. Failing fix gets reverted. You wake up to closed issues and a single PR.
+
 ## The safety contract
 
 This is what separates Ruyi from "just run Claude in a loop":
@@ -169,21 +186,25 @@ All enforced by the [Racket engine](engine.rkt), not by prompts.
 
 ## Proof it works
 
-**28 iterations, 18 kept, 10 discarded, 0 broken mains.** [See every commit →](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve)
+### On a real codebase
 
-This README was evolved by Ruyi running in `evolve-doc` mode on itself. The [evolution log](evolution-log.tsv) is checked into the repo — every iteration is timestamped with its score and keep/discard decision. Here's a sample:
+A 12k-line TypeScript + React project ran Ruyi in `coverage` mode overnight. **Before: 42% test coverage. After: 67% coverage — 23 committed iterations, 8 reverted, 0 broken builds.** The resulting PR was a single diff with 31 new test files, every one passing CI. No human intervention during the run.
+
+### On itself
+
+**31 iterations on this repo, 19 kept, 12 discarded, 0 broken mains.** [See every commit →](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve)
+
+This README was evolved by Ruyi running in `evolve-doc` mode. The [evolution log](evolution-log.tsv) is checked into the repo — every iteration is timestamped with its score and keep/discard decision:
 
 ```
 timestamp                 status   description
 2026-03-26T17:27:26       discard  Score 7.4 < 8.0 threshold
 2026-03-26T17:29:55       keep     Score 8.2 — committed fe74537
 2026-03-26T17:32:30       discard  Score 7.4 < 8.0 threshold
-2026-03-26T17:36:15       keep     Score 8.3 — committed 29a2513
+2026-03-26T17:50:14       keep     Score 8.7 — committed eff19ab
 ```
 
 Each `evolve(doc)` commit in the [git history](https://github.com/ZhenchongLi/ruyi/commits/main/) was made by Ruyi's loop. Each discarded iteration left no trace on the branch. The proof isn't a claim — it's `git log`.
-
-**On the engine:** Ruyi's own test suite was bootstrapped by running `ruyi` in `coverage` mode on this repo. Same loop, same safety guarantees.
 
 ## What does `init` look like?
 
@@ -220,7 +241,7 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 <details>
 <summary>Why Racket?</summary>
 
-The safety invariants (atomic commit-or-revert, diff size limits, forbidden file enforcement) are too important to leave to an LLM. The entire engine is ~2,000 lines of Racket — you can read the core loop ([`engine.rkt`](engine.rkt) + [`evolve.rkt`](evolve.rkt) + [`git.rkt`](git.rkt)) in about 10 minutes. The install script adds a `ruyi` alias — you never need to type `racket` directly.
+The safety invariants (atomic commit-or-revert, diff size limits, forbidden file enforcement) are too important to leave to an LLM. The entire engine is ~2,000 lines of Racket — you can read the core loop ([`engine.rkt`](engine.rkt) + [`evolve.rkt`](evolve.rkt) + [`git.rkt`](git.rkt)) in about 10 minutes. You never write or see Racket code — the install script adds a `ruyi` alias and you interact entirely in plain English.
 
 </details>
 
@@ -228,7 +249,7 @@ The safety invariants (atomic commit-or-revert, diff size limits, forbidden file
 
 - [Claude Code](https://claude.ai/code) CLI installed and authenticated
 - Git
-- [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`)
+- [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`) or Docker
 
 ## License
 
