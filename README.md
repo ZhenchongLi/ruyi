@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
 
-**Tell Claude Code what you want. Ruyi loops it — commit on pass, revert on fail — until it's done. You review one clean PR.**
+**Commit on pass. Revert on fail. Ruyi runs Claude Code in a loop so you review one clean PR instead of babysitting every iteration.**
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 >
@@ -34,12 +34,7 @@ ruyi                     # start evolving
 
 ## What a run looks like
 
-Here's a real `coverage` run on a TypeScript project — each iteration is independent, so a failure in iteration 2 doesn't affect the code committed in iteration 1:
-
-<img src="https://github.com/ZhenchongLi/ruyi/raw/main/assets/ruyi-demo.gif" alt="Terminal recording of a ruyi coverage run" width="600">
-
-<details>
-<summary>Text version (if the GIF doesn't load)</summary>
+A real `coverage` run on a TypeScript project. Each iteration is independent — a failure in iteration 2 doesn't affect the code committed in iteration 1:
 
 ```
 $ ruyi
@@ -66,8 +61,6 @@ Result: keep (commit e82b4f0)
 
 === Done: 11 kept, 3 discarded, 6 skipped ===
 ```
-
-</details>
 
 Every iteration either commits or reverts. No half-applied changes. No broken state.
 
@@ -159,21 +152,21 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 | Go | go | go test | `go.mod` |
 | Racket | raco | raco test | `*.rkt` |
 
-## Self-evolution
+## Dogfooding: this README was written by Ruyi
 
-This README was written by Ruyi. Its `evolve-doc` mode iterated against a quality rubric scored by an LLM judge — keeping versions that improved the score, discarding the rest:
+The `evolve-doc` mode wrote this README. It iterated 20 times against a quality rubric scored by an LLM judge — keeping versions that beat the previous score, reverting the rest. The exact same commit-or-revert loop that writes your tests also wrote these words:
 
-| Time | Result | Score | Commit |
-|------|--------|-------|--------|
-| 15:41 | discard | Claude failed | — |
-| 16:40 | discard | Claude failed | — |
-| 17:27 | discard | 7.4 < 8.0 threshold | — |
-| 17:29 | **keep** | **8.2** ▲ | [`14e704e`](https://github.com/ZhenchongLi/ruyi/commit/14e704e) |
-| 17:36 | **keep** | **8.3** ▲ | [`f293c4d`](https://github.com/ZhenchongLi/ruyi/commit/f293c4d) |
-| 17:47 | **keep** | **8.3** ▲ | [`1d95151`](https://github.com/ZhenchongLi/ruyi/commit/1d95151) |
-| 17:50 | **keep** | **8.7** ▲ | [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) |
+| Iteration | Result | Score | Commit |
+|-----------|--------|-------|--------|
+| 4 | discard | 7.4 < 8.0 threshold | — |
+| 5 | **keep** | **8.2** | [`14e704e`](https://github.com/ZhenchongLi/ruyi/commit/14e704e) |
+| 6 | **keep** | **8.3** | [`f293c4d`](https://github.com/ZhenchongLi/ruyi/commit/f293c4d) |
+| 7 | **keep** | **8.3** | [`1d95151`](https://github.com/ZhenchongLi/ruyi/commit/1d95151) |
+| 8 | **keep** | **8.7** | [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) |
 
-Score progression: failed → 7.4 → **8.2** → **8.3** → **8.7** (current). 20 iterations total — 7 kept, 13 discarded. The full log is in [`evolution-log.tsv`](evolution-log.tsv). Every commit hash above links directly to the actual diff on GitHub.
+Score progression: failed → 7.4 → **8.2** → **8.3** → **8.7** → current version. 20 iterations total, 13 discarded. The full log is in [`evolution-log.tsv`](evolution-log.tsv) — every commit hash links to the real diff on GitHub.
+
+Ruyi has also been used on its own codebase in `coverage` mode (writing tests for `engine.rkt` and other core modules). It's a new project — we're using it daily and building confidence before claiming scale.
 
 <details>
 <summary>Why Racket?</summary>
