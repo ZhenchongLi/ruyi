@@ -5,7 +5,7 @@
   (require "config.rkt" "engine.rkt" "init.rkt"
            "modes/coverage.rkt" "modes/filesize.rkt"
            "modes/issue.rkt" "modes/refactor.rkt"
-           "modes/evolve-doc.rkt")
+           "modes/evolve-doc.rkt" "modes/freestyle.rkt")
 
   ;; ============================================================
   ;; Ruyi — as you wish
@@ -19,30 +19,31 @@
            (cons "refactor" refactor-mode)
            (cons "evolve-doc" evolve-doc-mode))))
 
-  ;; ---- Function definitions (before dispatch) ----
+  ;; ---- Function definitions ----
 
   (define (print-usage)
     (displayln "
-Ruyi — deterministic evolution engine
+Ruyi — as you wish
 
 Usage:
-  racket evolve.rkt init [path]     Set up ruyi for a project
-  racket evolve.rkt                 Run evolution (reads .ruyi.rkt)
-  racket evolve.rkt <mode>          Run with specific mode
-  racket evolve.rkt <repo> <mode>   Legacy: use configs/<repo>.rkt
+  racket evolve.rkt init [path]           Set up ruyi for a project
+  racket evolve.rkt                       Run evolution (reads .ruyi.rkt)
+  racket evolve.rkt <mode>                Run with specific mode
+  racket evolve.rkt <repo> <mode>         Legacy: use configs/<repo>.rkt
+  racket evolve.rkt <repo> do <goal>      Freestyle: tell ruyi what you want
 
 Modes:  coverage, filesize, issue, refactor, evolve-doc
 
-Quick start:
-  cd your-project
-  racket ~/ruyi/evolve.rkt init     # detect project, set your goal
-  racket ~/ruyi/evolve.rkt          # start evolving"))
+Examples:
+  racket evolve.rkt cove coverage
+  racket evolve.rkt cove do \"add CLI support\"
+  racket evolve.rkt docmod do \"translate README to English\""))
 
   (define (run-from-local-config dir [mode-override #f])
     (define config-file (build-path dir ".ruyi.rkt"))
     (unless (file-exists? config-file)
       (printf "No .ruyi.rkt found in ~a\n\n" (path->string dir))
-      (printf "Run 'ruyi init' first:\n")
+      (displayln "Run 'ruyi init' first:")
       (printf "  cd ~a\n" (path->string dir))
       (displayln "  racket ~/ruyi/evolve.rkt init")
       (exit 1))
@@ -71,6 +72,19 @@ Quick start:
     (define repo-config (dynamic-require config-module config-sym))
     (evolution-loop repo-config (hash-ref all-modes mode-name)))
 
+  (define (run-freestyle repo-name goal)
+    (define config-file
+      (build-path (find-system-path 'orig-dir)
+                  "configs" (string-append repo-name ".rkt")))
+    (unless (file-exists? config-file)
+      (eprintf "No config found: configs/~a.rkt\n" repo-name)
+      (exit 1))
+    (define config-sym (string->symbol (string-append repo-name "-config")))
+    (define config-module `(file ,(path->string config-file)))
+    (define repo-config (dynamic-require config-module config-sym))
+    (define fm (make-freestyle-mode goal))
+    (evolution-loop repo-config fm))
+
   ;; ---- Dispatch ----
 
   (define args (vector->list (current-command-line-arguments)))
@@ -89,6 +103,12 @@ Quick start:
     ;; Help
     [(or (string=? (first args) "--help") (string=? (first args) "-h"))
      (print-usage)]
+
+    ;; Freestyle: <repo> do <goal...>
+    [(and (>= (length args) 3) (string=? (second args) "do"))
+     (define repo-name (first args))
+     (define goal (string-join (cddr args) " "))
+     (run-freestyle repo-name goal)]
 
     ;; Single arg: mode name
     [(and (= (length args) 1) (hash-has-key? all-modes (first args)))
