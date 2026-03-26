@@ -1,6 +1,6 @@
 # Ruyi (如意)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code) [![Self-evolved](https://img.shields.io/badge/Self--evolved-20_kept_%7C_12_reverted_%7C_0_broken_mains-brightgreen.svg)](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve)
 
 **Claude broke main again? Not with Ruyi.** Every AI change either commits clean or reverts completely — you review one PR, not a half-applied disaster.
 
@@ -94,6 +94,8 @@ The Racket engine controls every step. Claude never decides whether to commit or
 
 ## Quick Start
 
+> **Prerequisite:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) must be installed and authenticated before you begin. Run `claude --version` to verify. If you don't have it yet, [install Claude Code first](https://docs.anthropic.com/en/docs/claude-code/overview#installation).
+
 **You never write Racket — it's just the runtime.** The install takes ~2 minutes and adds a `ruyi` alias. You interact with Ruyi in plain English.
 
 **macOS (3 commands):**
@@ -165,12 +167,14 @@ Describe your goal in plain English during `ruyi init` — Ruyi selects the righ
 | `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
 | `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
 | `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
-| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
+| `freestyle` | "Add OpenTelemetry tracing to every endpoint" | Any goal — validated by your test suite each iteration |
 | `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring |
 
 > **"Improve test coverage."** Ruyi writes tests across your codebase. Keeps the ones that pass, reverts the ones that don't. You review one clean diff.
 >
 > **"Fix GitHub issues."** Ruyi picks up open issues one by one, implements a fix, runs your test suite. Passing fix gets committed with the issue linked. Failing fix gets reverted. You wake up to closed issues and a single PR.
+>
+> **"Add OpenTelemetry tracing to every endpoint."** Freestyle mode — Ruyi instruments your API endpoints one at a time, committing each change only if your test suite still passes. You get incremental, safe progress toward any goal.
 
 ## The safety contract
 
@@ -186,15 +190,12 @@ All enforced by the [Racket engine](engine.rkt), not by prompts.
 
 ## Proof it works
 
-### On a real codebase
+### On itself — verifiable, right now
 
-A 12k-line TypeScript + React project ran Ruyi in `coverage` mode overnight. **Before: 42% test coverage. After: 67% coverage — 23 committed iterations, 8 reverted, 0 broken builds.** The resulting PR was a single diff with 31 new test files, every one passing CI. No human intervention during the run.
+**32 iterations on this repo. 20 kept, 12 reverted, 0 broken mains.** Every claim below is a link you can click:
 
-### On itself
-
-**31 iterations on this repo, 19 kept, 12 discarded, 0 broken mains.** [See every commit →](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve)
-
-This README was evolved by Ruyi running in `evolve-doc` mode. The [evolution log](evolution-log.tsv) is checked into the repo — every iteration is timestamped with its score and keep/discard decision:
+- [Every `evolve(doc)` commit in git history](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve) — click any to see the diff
+- [`evolution-log.tsv`](evolution-log.tsv) checked into the repo — every iteration timestamped with its score and keep/discard decision:
 
 ```
 timestamp                 status   description
@@ -204,7 +205,20 @@ timestamp                 status   description
 2026-03-26T17:50:14       keep     Score 8.7 — committed eff19ab
 ```
 
-Each `evolve(doc)` commit in the [git history](https://github.com/ZhenchongLi/ruyi/commits/main/) was made by Ruyi's loop. Each discarded iteration left no trace on the branch. The proof isn't a claim — it's `git log`.
+This README was evolved by Ruyi running in `evolve-doc` mode. Each discarded iteration left no trace on the branch. The proof isn't a claim — it's `git log`.
+
+### Try it yourself in 5 minutes
+
+The fastest way to verify Ruyi works is to run it on your own project:
+
+```bash
+cd your-project
+ruyi init              # say "Improve test coverage"
+ruyi                   # watch it commit passes and revert failures
+git log --oneline      # see for yourself
+```
+
+You'll have committed test files within minutes — no trust required, just `git log`.
 
 ## What does `init` look like?
 
@@ -222,7 +236,7 @@ Examples:
   - Improve test coverage
   - Fix GitHub issues
   - Refactor large files
-  - Translate docs to English
+  - Add error handling to all API routes
   - Any goal you have in mind
 
 > Improve test coverage
@@ -247,7 +261,7 @@ The safety invariants (atomic commit-or-revert, diff size limits, forbidden file
 
 ## Requirements
 
-- [Claude Code](https://claude.ai/code) CLI installed and authenticated
+- **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview)** — installed and authenticated (`claude --version` to check)
 - Git
 - [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`) or Docker
 
