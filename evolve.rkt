@@ -2,7 +2,7 @@
 #lang racket/base
 (module+ main
   (require racket/cmdline racket/string racket/format racket/path racket/file racket/list)
-  (require "config.rkt" "engine.rkt" "init.rkt"
+  (require "config.rkt" "engine.rkt" "init.rkt" "git.rkt"
            "modes/coverage.rkt" "modes/filesize.rkt"
            "modes/issue.rkt" "modes/refactor.rkt"
            "modes/evolve-doc.rkt" "modes/freestyle.rkt")
@@ -30,14 +30,21 @@ Usage:
   racket evolve.rkt                       Run evolution (reads .ruyi.rkt)
   racket evolve.rkt <mode>                Run with specific mode
   racket evolve.rkt <repo> <mode>         Legacy: use configs/<repo>.rkt
-  racket evolve.rkt <repo> do <goal>      Freestyle: tell ruyi what you want
+  racket evolve.rkt <repo> do <goal>      Freestyle (worktree, safe to run multiple)
+  racket evolve.rkt <repo> do-local <goal>  Freestyle (local working dir, legacy)
+  racket evolve.rkt <repo> wrun <mode>    Run mode in worktree (safe to run multiple)
+  racket evolve.rkt <repo> parallel <mode1> <mode2> ...
+                                          Run multiple modes in parallel
+  racket evolve.rkt <repo> pdo <goal1> // <goal2> // ...
+                                          Run multiple freestyle goals in parallel
 
 Modes:  coverage, filesize, issue, refactor, evolve-doc
 
 Examples:
-  racket evolve.rkt cove coverage
-  racket evolve.rkt cove do \"add CLI support\"
-  racket evolve.rkt docmod do \"translate README to English\""))
+  racket evolve.rkt cove do \"add CLI support\"     # worktree, can start many
+  racket evolve.rkt cove wrun coverage              # worktree
+  racket evolve.rkt cove parallel coverage filesize
+  racket evolve.rkt cove pdo \"add CLI support\" // \"translate README\""))
 
   (define (run-from-local-config dir [mode-override #f])
     (define config-file (build-path dir ".ruyi.rkt"))
@@ -86,6 +93,60 @@ Examples:
                  #:repo-path (repo-config-path repo-config)))
     (evolution-loop repo-config fm))
 
+  (define (load-repo-config repo-name)
+    (define config-file
+      (build-path (find-system-path 'orig-dir)
+                  "configs" (string-append repo-name ".rkt")))
+    (unless (file-exists? config-file)
+      (eprintf "No config found: configs/~a.rkt\n" repo-name)
+      (exit 1))
+    (define config-sym (string->symbol (string-append repo-name "-config")))
+    (define config-module `(file ,(path->string config-file)))
+    (dynamic-require config-module config-sym))
+
+  (define (run-parallel-modes repo-name mode-names)
+    "Run multiple predefined modes in parallel on the same repo."
+    (define repo (load-repo-config repo-name))
+    (define modes
+      (for/list ([mn (in-list mode-names)])
+        (unless (hash-has-key? all-modes mn)
+          (eprintf "Unknown mode: ~a\n" mn)
+          (exit 1))
+        (hash-ref all-modes mn)))
+    (run-parallel-evolutions repo modes))
+
+  (define (run-parallel-freestyle repo-name goals)
+    "Run multiple freestyle goals in parallel on the same repo."
+    (define repo (load-repo-config repo-name))
+    (define modes
+      (for/list ([goal (in-list goals)])
+        (make-freestyle-mode goal
+          #:repo-path (repo-config-path repo)
+          #:clarify? #f)))
+    (run-parallel-evolutions repo modes))
+
+  (define (run-worktree-freestyle repo-name goal)
+    "Run a single freestyle evolution in its own worktree."
+    (define repo (load-repo-config repo-name))
+    (define fm (make-freestyle-mode goal
+                 #:repo-path (repo-config-path repo)
+                 #:clarify? #f))
+    (define-values (branch kept pr-url)
+      (evolution-loop/worktree repo fm))
+    (printf "\nDone: ~a (kept ~a)\n" branch kept)
+    (when pr-url (printf "PR: ~a\n" pr-url)))
+
+  (define (run-worktree-mode repo-name mode-name)
+    "Run a single predefined mode in its own worktree."
+    (define repo (load-repo-config repo-name))
+    (unless (hash-has-key? all-modes mode-name)
+      (eprintf "Unknown mode: ~a\n" mode-name)
+      (exit 1))
+    (define-values (branch kept pr-url)
+      (evolution-loop/worktree repo (hash-ref all-modes mode-name)))
+    (printf "\nDone: ~a (kept ~a)\n" branch kept)
+    (when pr-url (printf "PR: ~a\n" pr-url)))
+
   ;; ---- Dispatch ----
 
   (define args (vector->list (current-command-line-arguments)))
@@ -105,11 +166,35 @@ Examples:
     [(or (string=? (first args) "--help") (string=? (first args) "-h"))
      (print-usage)]
 
-    ;; Freestyle: <repo> do <goal...>
+    ;; Freestyle (worktree, default): <repo> do <goal...>
     [(and (>= (length args) 3) (string=? (second args) "do"))
      (define repo-name (first args))
      (define goal (string-join (cddr args) " "))
+     (run-worktree-freestyle repo-name goal)]
+
+    ;; Freestyle (local, legacy): <repo> do-local <goal...>
+    [(and (>= (length args) 3) (string=? (second args) "do-local"))
+     (define repo-name (first args))
+     (define goal (string-join (cddr args) " "))
      (run-freestyle repo-name goal)]
+
+    ;; Worktree mode: <repo> wrun <mode>
+    [(and (= (length args) 3) (string=? (second args) "wrun"))
+     (run-worktree-mode (first args) (third args))]
+
+    ;; Parallel modes: <repo> parallel <mode1> <mode2> ...
+    [(and (>= (length args) 3) (string=? (second args) "parallel"))
+     (define repo-name (first args))
+     (define mode-names (cddr args))
+     (run-parallel-modes repo-name mode-names)]
+
+    ;; Parallel freestyle: <repo> pdo <goal1> // <goal2> // ...
+    [(and (>= (length args) 3) (string=? (second args) "pdo"))
+     (define repo-name (first args))
+     (define goal-str (string-join (cddr args) " "))
+     (define goals
+       (map string-trim (string-split goal-str "//")))
+     (run-parallel-freestyle repo-name goals)]
 
     ;; Single arg: mode name
     [(and (= (length args) 1) (hash-has-key? all-modes (first args)))

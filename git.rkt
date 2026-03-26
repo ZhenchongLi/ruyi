@@ -123,6 +123,31 @@
   (shell! repo "git" "push" "-u" "origin" branch))
 
 ;; ============================================================
+;; Git worktree operations (for parallel evolution)
+;; ============================================================
+
+(define (git-worktree-add! repo branch-name)
+  "Create a worktree for branch-name under a temp directory.
+   Returns the worktree path (string)."
+  (define wt-dir
+    (path->string
+     (build-path (find-system-path 'temp-dir)
+                 (format "ruyi-wt-~a" (string-replace branch-name "/" "-")))))
+  ;; Remove stale worktree if it exists
+  (when (directory-exists? (string->path wt-dir))
+    (with-handlers ([exn:fail? (lambda (_) (void))])
+      (shell! repo "git" "worktree" "remove" "--force" wt-dir)))
+  (shell! repo "git" "worktree" "add" wt-dir branch-name)
+  wt-dir)
+
+(define (git-worktree-remove! repo wt-dir)
+  "Remove a worktree and prune."
+  (with-handlers ([exn:fail? (lambda (_) (void))])
+    (shell! repo "git" "worktree" "remove" "--force" wt-dir))
+  (with-handlers ([exn:fail? (lambda (_) (void))])
+    (shell! repo "git" "worktree" "prune")))
+
+;; ============================================================
 ;; GitHub PR operations
 ;; ============================================================
 
