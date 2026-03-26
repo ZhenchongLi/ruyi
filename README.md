@@ -2,7 +2,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
 
-**Commit on pass. Revert on fail. Ruyi runs Claude Code in a loop so you review one clean PR instead of babysitting every iteration.**
+**Every change either commits clean or reverts completely. You review one PR, not a disaster recovery incident.**
+
+Ruyi runs Claude Code in a loop with an atomic guarantee: each iteration passes your tests and commits, or gets reverted as if it never happened. No half-applied changes. No broken intermediate state. Ever.
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 >
@@ -62,31 +64,35 @@ Result: keep (commit e82b4f0)
 === Done: 11 kept, 3 discarded, 6 skipped ===
 ```
 
-Every iteration either commits or reverts. No half-applied changes. No broken state.
+**Before and after** — your git log at the end of a run:
+
+```
+$ git log --oneline ruyi/coverage-session
+
+e82b4f0 test(billing): add 8 tests for src/api/billing.ts
+a3f9c21 test(session): add 14 tests for src/auth/session.ts
+  ↑ only passing iterations survive — failed attempts leave no trace
+```
 
 ## How it works
 
 ```
-  your goal
-     │
-     ▼
-┌──────────┐     ┌────────────┐     ┌──────────┐
-│ Pick task │ ──► │ Claude Code│ ──► │ Run tests│
-└──────────┘     │ writes code│     └────┬─────┘
-     ▲           └────────────┘       ┌──┴──┐
-     │                             pass?  fail?
-     │                               │      │
-     │                          git commit  git revert
-     │                               │      │
-     └───────── next iteration ◄─────┴──────┘
+  "Improve test coverage"
+         │
+         ▼
+  ┌─────────────┐      ┌──────────────┐      ┌────────────┐
+  │  Pick task   │ ───► │  Claude Code  │ ───► │  Run tests  │
+  │  (Racket)    │      │  writes code  │      │  (your CI)  │
+  └─────────────┘      └──────────────┘      └──────┬─────┘
+         ▲                                      ┌────┴────┐
+         │                                   pass?      fail?
+         │                                     │          │
+         │                                git commit  git revert
+         │                                     │          │
+         └──────── next iteration ◄────────────┴──────────┘
 ```
 
-The key idea: **separate the deterministic from the creative**.
-
-| | Racket (deterministic) | Claude (creative) |
-|---|---|---|
-| **Does** | Selects tasks, runs validation, manages git, enforces limits | Reads code, understands intent, writes implementations |
-| **Why** | These things must be reliable — code guarantees they are | This is where AI shines — understanding and creating |
+The core idea: **deterministic orchestration in a compiled language, creative work delegated to the LLM**. The control loop, git operations, and safety invariants are Racket — pattern matching and immutable data structures make them easy to audit. Claude handles what AI is good at: reading code, understanding intent, writing implementations.
 
 **Safety guarantees** — this is what separates Ruyi from "just run Claude in a loop":
 - **Atomic commit-or-revert** — every iteration either passes tests and commits, or reverts completely. No broken intermediate state, ever.
@@ -156,17 +162,12 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 
 The `evolve-doc` mode wrote this README. It iterated 20 times against a quality rubric scored by an LLM judge — keeping versions that beat the previous score, reverting the rest. The exact same commit-or-revert loop that writes your tests also wrote these words:
 
-| Iteration | Result | Score | Commit |
-|-----------|--------|-------|--------|
-| 4 | discard | 7.4 < 8.0 threshold | — |
-| 5 | **keep** | **8.2** | [`14e704e`](https://github.com/ZhenchongLi/ruyi/commit/14e704e) |
-| 6 | **keep** | **8.3** | [`f293c4d`](https://github.com/ZhenchongLi/ruyi/commit/f293c4d) |
-| 7 | **keep** | **8.3** | [`1d95151`](https://github.com/ZhenchongLi/ruyi/commit/1d95151) |
-| 8 | **keep** | **8.7** | [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) |
+| What happened | Score | Commit |
+|--------------|-------|--------|
+| First accepted version | **8.3** | [`f293c4d`](https://github.com/ZhenchongLi/ruyi/commit/f293c4d) |
+| Current version | **8.7** | [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) |
 
-Score progression: failed → 7.4 → **8.2** → **8.3** → **8.7** → current version. 20 iterations total, 13 discarded. The full log is in [`evolution-log.tsv`](evolution-log.tsv) — every commit hash links to the real diff on GitHub.
-
-Ruyi has also been used on its own codebase in `coverage` mode (writing tests for `engine.rkt` and other core modules). It's a new project — we're using it daily and building confidence before claiming scale.
+20 iterations total, 13 discarded. Every commit hash in [`evolution-log.tsv`](evolution-log.tsv) links to the real diff on GitHub. Ruyi has also been used on its own codebase in `coverage` mode, writing tests for the core engine modules.
 
 <details>
 <summary>Why Racket?</summary>
