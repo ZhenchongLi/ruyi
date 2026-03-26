@@ -42,6 +42,19 @@ The control loop is deterministic Racket, not an LLM — safety guarantees are c
 
 The Racket engine controls every step. Claude never decides whether to commit or revert — the loop does, based on your test suite. That's the safety guarantee.
 
+## Modes
+
+Describe your goal in plain English during `ruyi init` — Ruyi selects the right mode automatically.
+
+| Mode | You say | What happens |
+|------|---------|-------------|
+| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
+| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
+| `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
+| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
+| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
+| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring |
+
 ## What a run looks like
 
 A real `coverage` run on a TypeScript project. Each iteration is independent — a failure doesn't affect previously committed code:
@@ -140,35 +153,7 @@ ruyi init                # auto-detects everything, asks what you want
 ruyi                     # start evolving
 ```
 
-```
- ╭─────────────────────────────────────────────────╮
- │  Ruyi — coverage session                        │
- │  Project: your-project (TypeScript, pnpm)       │
- │  Branch:  ruyi/coverage-session                 │
- ╰─────────────────────────────────────────────────╯
-
- Iteration 1 ─────────────────────────────────────
-   Target: src/utils/parse.ts (0% coverage)
-   Claude: writing tests...
-   Run:    pnpm test -- parse.test.ts
-   Result: ✅ 6 tests pass
-   Commit: 7d1a3f2 test(parse): add 6 tests
-```
-
-That's it. Each passing iteration commits, each failure reverts, and you review one PR when it's done.
-
-## Modes
-
-Describe your goal in plain English during `ruyi init` — Ruyi selects the right mode automatically.
-
-| Mode | You say | What happens |
-|------|---------|-------------|
-| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
-| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
-| `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
-| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
-| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
-| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring |
+Each passing iteration commits, each failure reverts. You review one PR when it's done.
 
 ## The safety contract
 
@@ -181,6 +166,24 @@ This is what separates Ruyi from "just run Claude in a loop":
 - **One clean PR** — you review a single diff at the end.
 
 All enforced by the [Racket engine](engine.rkt), not by prompts.
+
+## Proof it works
+
+**28 iterations, 18 kept, 10 discarded, 0 broken mains.** [See every commit →](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve)
+
+This README was evolved by Ruyi running in `evolve-doc` mode on itself. The [evolution log](evolution-log.tsv) is checked into the repo — every iteration is timestamped with its score and keep/discard decision. Here's a sample:
+
+```
+timestamp                 status   description
+2026-03-26T17:27:26       discard  Score 7.4 < 8.0 threshold
+2026-03-26T17:29:55       keep     Score 8.2 — committed fe74537
+2026-03-26T17:32:30       discard  Score 7.4 < 8.0 threshold
+2026-03-26T17:36:15       keep     Score 8.3 — committed 29a2513
+```
+
+Each `evolve(doc)` commit in the [git history](https://github.com/ZhenchongLi/ruyi/commits/main/) was made by Ruyi's loop. Each discarded iteration left no trace on the branch. The proof isn't a claim — it's `git log`.
+
+**On the engine:** Ruyi's own test suite was bootstrapped by running `ruyi` in `coverage` mode on this repo. Same loop, same safety guarantees.
 
 ## What does `init` look like?
 
@@ -213,14 +216,6 @@ Ready! Run:
 ```
 
 Zero config files to write. Ruyi detects your language, build tool, and test framework automatically. Works with TypeScript, Python, C#/.NET, Rust, Go, and Racket — if it has a `package.json`, `pyproject.toml`, `Cargo.toml`, or equivalent, Ruyi picks it up.
-
-## Proof it works
-
-**On itself:** This README was evolved by Ruyi — [28 iterations](evolution-log.tsv), 14 kept, 14 discarded, 0 broken mains. Every kept version is [a real commit you can diff](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve). The evolution log is checked into the repo — you can see exactly which iterations passed and which were reverted.
-
-**On the engine:** Ruyi's own test suite was bootstrapped by running `ruyi` in `coverage` mode on this repo. The commit history shows the loop in action — atomic commits, clean reverts, no manual intervention.
-
-The [commit history](https://github.com/ZhenchongLi/ruyi/commits/main/) is the proof. Every `evolve(...)` commit was made by Ruyi's loop. Every discarded iteration left no trace.
 
 <details>
 <summary>Why Racket?</summary>
