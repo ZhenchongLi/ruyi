@@ -390,12 +390,24 @@
     (printf "\n[~a] Complete — kept: ~a, discarded: ~a\n" branch kept-count discarded-count)
 
     (when (and auto-merge? (> kept-count 0))
-      (printf "[~a] Pushing and creating PR...\n" branch)
-      ;; Push from worktree
-      (shell!/dir wt-path "git" "push" "-u" "origin" branch)
-      (set! pr-url
-        (gh-create-and-merge-pr! wt-repo mode-obj (reverse kept-tasks)))
-      (printf "[~a] PR: ~a\n" branch pr-url)))
+      (define has-remote?
+        (with-handlers ([exn:fail? (lambda (_) #f)])
+          (define out (shell!/dir wt-path "git" "remote"))
+          (not (string=? (string-trim out) ""))))
+      (cond
+        [has-remote?
+         (printf "[~a] Pushing and creating PR...\n" branch)
+         (shell!/dir wt-path "git" "push" "-u" "origin" branch)
+         (set! pr-url
+           (gh-create-and-merge-pr! wt-repo mode-obj (reverse kept-tasks)))
+         (printf "[~a] PR: ~a\n" branch pr-url)]
+        [else
+         (printf "[~a] No remote — merging locally...\n" branch)
+         (define base (repo-config-base-branch origin-repo))
+         (shell!/dir (path->string (repo-config-path origin-repo))
+                     "git" "merge" branch "--no-ff"
+                     "-m" (format "Merge ~a (~a changes)" branch kept-count))
+         (printf "[~a] Merged to ~a\n" branch base)])))
 
   ;; Cleanup worktree
   (printf "[worktree] Cleaning up ~a\n" wt-path)
