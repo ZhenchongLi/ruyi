@@ -1,8 +1,8 @@
 # Ruyi (如意)
 
-> As you wish — a deterministic evolution engine for any codebase.
+**Point Claude Code at your repo and say what you want. Ruyi does the rest — in a loop, safely, until it's done.**
 
-Ruyi automates codebase improvement through a simple loop: **select task → Claude implements → validate → keep or discard → repeat**. The loop is deterministic Racket code that never forgets to revert, never miscounts iterations, and never skips validation. Claude only does what it's best at: reading and writing code.
+> "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 
 ```mermaid
 flowchart LR
@@ -17,25 +17,15 @@ flowchart LR
 ## Quick Start
 
 ```bash
-# Install Racket (one-time)
-brew install minimal-racket
-
-# Clone ruyi
+brew install minimal-racket                        # one-time
 git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
 
-# Go to ANY project you want to improve
-cd your-project
-
-# Initialize — ruyi detects your project and asks what you want
-racket ~/ruyi/evolve.rkt init
-
-# Start evolving
-racket ~/ruyi/evolve.rkt
+cd your-project                                    # any language, any framework
+racket ~/ruyi/evolve.rkt init                      # auto-detects everything, asks what you want
+racket ~/ruyi/evolve.rkt                           # start evolving
 ```
 
-That's it. Ruyi auto-detects your language, build tool, and test framework. You just tell it what you want.
-
-## What happens during `init`?
+## What does `init` look like?
 
 ```
 $ cd my-react-app
@@ -65,6 +55,65 @@ Ready! Run:
   racket ~/ruyi/evolve.rkt
 ```
 
+Zero config files to write. Ruyi detects your language, build tool, and test framework automatically.
+
+## What does a run look like?
+
+```
+=== Iteration 1/20 ===
+Task: Write tests for src/auth/session.ts
+Claude: implementing...
+Validate: pnpm test ✓
+Result: keep (commit a3f9c21)
+
+=== Iteration 2/20 ===
+Task: Write tests for src/api/users.ts
+Claude: implementing...
+Validate: pnpm test ✗ (1 assertion failed)
+Result: discard (reverted)
+
+=== Iteration 3/20 ===
+Task: Write tests for src/api/billing.ts
+Claude: implementing...
+Validate: pnpm test ✓
+Result: keep (commit e82b4f0)
+
+...
+
+=== Done: 11 kept, 3 discarded, 6 skipped ===
+```
+
+Every iteration either commits or reverts. No half-applied changes. No broken state.
+
+## How it works
+
+The key idea: **separate the deterministic from the creative**.
+
+| | Racket (deterministic) | Claude (creative) |
+|---|---|---|
+| **Does** | Selects tasks, runs validation, manages git, enforces limits | Reads code, understands intent, writes implementations |
+| **Why** | These things must be reliable — code guarantees they are | This is where AI shines — understanding and creating |
+
+Each iteration:
+1. Racket scans your project and picks the next task
+2. Racket calls Claude with a focused, single-task prompt
+3. Claude implements the change
+4. Racket runs your build + test commands
+5. Pass → `git commit` / Fail → `git checkout .`
+6. Log the result, repeat
+
+**Safety**: always works on a branch, auto-reverts on failure, enforces diff size limits, respects forbidden files. You review one PR at the end.
+
+## Modes
+
+| Mode | What it does | Example |
+|------|-------------|---------|
+| `coverage` | Writes tests for untested files | "Improve test coverage" |
+| `filesize` | Splits oversized files into modules | "Break up large files" |
+| `issue` | Fixes open GitHub issues one by one | "Fix GitHub issues" |
+| `refactor` | Simplifies complex code | "Refactor large files" |
+| `evolve-doc` | Improves docs via LLM-as-Judge scoring | "Improve the README" |
+
 ## Supported Languages
 
 | Language | Build | Test | Detection |
@@ -76,32 +125,16 @@ Ready! Run:
 | Go | go | go test | `go.mod` |
 | Racket | raco | raco test | `*.rkt` |
 
-## Modes
+## Self-evolution
 
-| Mode | What it does |
-|------|-------------|
-| `coverage` | Write tests for untested files |
-| `filesize` | Split oversized files |
-| `issue` | Fix open GitHub issues |
-| `refactor` | Simplify complex code |
+Ruyi can evolve itself. This README was improved by Ruyi's own Judge mode — iterating against a quality rubric, keeping versions that score above threshold, discarding the rest:
 
-## How it works
-
-The key insight: **separate the deterministic from the creative**.
-
-- **Racket** (deterministic): selects tasks, runs validation, manages git, logs results, enforces iteration limits. These things must be reliable — code guarantees they are.
-- **Claude** (creative): reads code, understands logic, writes implementations. This is where AI shines — no rigid rules, just understanding and creating.
-
-Each iteration:
-1. Racket scans your project and picks the next task
-2. Racket calls Claude with a focused, single-task prompt
-3. Claude implements the change
-4. Racket runs your build + test commands
-5. All pass → `git commit` (keep)
-6. Any fail → `git checkout .` (discard, move on)
-7. Log the result, go to step 1
-
-Safety: always works on a branch, never touches your main code, auto-reverts on failure.
+```
+2026-03-26  evolve-doc  Score 7.4   discard   (below threshold)
+2026-03-26  evolve-doc  fe74537     keep      (score: 8.2)
+2026-03-26  evolve-doc  Score 7.4   discard   (below threshold)
+2026-03-26  evolve-doc  29a2513     keep      (score: 8.3)
+```
 
 ## Requirements
 
