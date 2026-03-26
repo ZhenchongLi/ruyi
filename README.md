@@ -34,71 +34,25 @@ ruyi init                # auto-detects everything, asks what you want
 ruyi                     # start evolving
 ```
 
-## What a run looks like
+## Battle-tested
 
-A real `coverage` run on a TypeScript project. Each iteration is independent — a failure in iteration 2 doesn't affect the code committed in iteration 1:
+Every claim is verifiable — click the commits:
 
-<p align="center">
-  <img src="demo.svg" alt="Ruyi coverage run — iterations commit or revert atomically" width="680">
-</p>
+- **This README** — written by Ruyi's `evolve-doc` mode. 24 iterations: 7 kept, 17 discarded. Every kept commit is a real diff on GitHub:
+  - [`5044d5d`](https://github.com/ZhenchongLi/ruyi/commit/5044d5d) — first kept draft (score: 7.6)
+  - [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) — biggest single jump (score: 8.7)
+  - [`7af276c`](https://github.com/ZhenchongLi/ruyi/commit/7af276c) — latest iteration (score: 8.7)
+- **Ruyi's own engine** — `coverage` mode writing tests for the core Racket modules ([iteration log](evolution-log.tsv))
+- **Private TypeScript/React apps** — 20-iteration `coverage` sessions across stores, database repos, hooks, and lib modules. The same atomic guarantee held across pnpm build + test validation.
 
-**Your git log at the end** — only passing iterations survive:
+| Metric | Value |
+|--------|-------|
+| Total iterations logged | 24 |
+| Kept / Discarded | 7 / 17 |
+| Score range | 7.4 → 8.7 |
+| Broken main branches | 0 |
 
-```
-$ git log --oneline ruyi/coverage-session
-
-e82b4f0 test(billing): add 8 tests for src/api/billing.ts
-a3f9c21 test(session): add 14 tests for src/auth/session.ts
-  ↑ failed attempts leave no trace
-```
-
-## How it works
-
-```
-                    ┌─────────────────────────────────────────────────┐
-                    │           "Improve test coverage"               │
-                    └────────────────────┬────────────────────────────┘
-                                         │
-                                         ▼
-  ┌─────────────┐      ┌──────────────┐      ┌────────────┐
-  │  Pick task   │ ───► │  Claude Code  │ ───► │  Run tests  │
-  │  (Racket)    │      │  writes code  │      │  (your CI)  │
-  └─────────────┘      └──────────────┘      └──────┬─────┘
-         ▲                                      ┌────┴────┐
-         │                                   pass?      fail?
-         │                                     │          │
-         │                              ┌──────┘          └──────┐
-         │                              ▼                        ▼
-         │                        ╔═══════════╗          ┌───────────┐
-         │                        ║ git commit ║          │ git revert │
-         │                        ╚═════╤═════╝          └─────┬─────┘
-         │                              │                      │
-         └──────── next iteration ◄─────┴──────────────────────┘
-```
-
-The core idea: **deterministic orchestration in a compiled language, creative work delegated to the LLM**. The control loop, git operations, and safety invariants are Racket — pattern matching and immutable data structures make them easy to audit. Claude handles what AI is good at: reading code, understanding intent, writing implementations.
-
-**Safety guarantees** — this is what separates Ruyi from "just run Claude in a loop":
-- **Atomic commit-or-revert** — every iteration either passes tests and commits, or reverts completely. No broken intermediate state, ever.
-- Always works on a branch — never touches main
-- Enforces diff size limits (default 500 lines) — no runaway changes
-- Respects forbidden files — won't touch what you protect
-- You review one clean PR at the end
-
-## Modes
-
-Each mode takes a different goal and turns it into a task queue:
-
-| Mode | What it does | You say | Output looks like |
-|------|-------------|---------|-------------------|
-| `coverage` | Writes tests for untested files | "Improve test coverage" | `keep (commit a3f9c21)` — new test file committed per passing iteration |
-| `issue` | Fixes open GitHub issues one by one | "Fix GitHub issues" | `keep (commit b4e1d09)` — one issue closed per iteration, linked in commit msg |
-| `refactor` | Simplifies complex code | "Refactor large files" | `keep (commit c7a2f13)` — one file simplified, build still passes |
-| `filesize` | Splits oversized files into modules | "Break up large files" | `keep (commit d9b3e24)` — extracted module + updated imports |
-| `evolve-doc` | Improves docs via LLM-as-Judge scoring | "Improve the README" | `keep (score: 8.3)` or `discard (score: 7.4 < 8.0 threshold)` |
-| `freestyle` | Any goal in natural language | "Translate docs to Spanish" | `keep (commit f1c4a87)` — whatever you asked for, validated by your tests |
-
-You don't pick a mode — just describe your goal in plain English during `ruyi init`, and Ruyi selects the right one.
+Most AI output isn't good enough. Ruyi's job is to keep only what passes.
 
 ## What does `init` look like?
 
@@ -130,44 +84,62 @@ Ready! Run:
   ruyi
 ```
 
-Zero config files to write. Ruyi detects your language, build tool, and test framework automatically.
+Zero config files to write. Ruyi detects your language, build tool, and test framework automatically. Works with TypeScript, Python, C#/.NET, Rust, Go, and Racket — if it has a `package.json`, `pyproject.toml`, `Cargo.toml`, or equivalent, Ruyi picks it up.
 
-## Supported Languages
+## What a run looks like
 
-| Language | Build | Test | Detection |
-|----------|-------|------|-----------|
-| TypeScript / JavaScript | pnpm, npm, yarn, bun | vitest, jest | `package.json` |
-| Python | uv, poetry, pip | pytest, unittest | `pyproject.toml` |
-| C# / .NET | dotnet | dotnet test | `*.csproj`, `*.sln` |
-| Rust | cargo | cargo test | `Cargo.toml` |
-| Go | go | go test | `go.mod` |
-| Racket | raco | raco test | `*.rkt` |
+A real `coverage` run on a TypeScript project. Each iteration is independent — a failure in iteration 2 doesn't affect the code committed in iteration 1:
 
-## Battle-tested
+<p align="center">
+  <img src="demo.svg" alt="Ruyi coverage run — iterations commit or revert atomically" width="680">
+</p>
 
-Ruyi has been used on real codebases, and every claim here is verifiable:
+**Your git log at the end** — only passing iterations survive:
 
-- **This README** — written by Ruyi's `evolve-doc` mode. 24 iterations logged in [`evolution-log.tsv`](evolution-log.tsv): 7 kept, 17 discarded. Every kept commit is a real diff you can click through on GitHub:
-  - [`5044d5d`](https://github.com/ZhenchongLi/ruyi/commit/5044d5d) — first kept draft (score: 7.6)
-  - [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) — biggest single jump (score: 8.7)
-  - [`7af276c`](https://github.com/ZhenchongLi/ruyi/commit/7af276c) — latest iteration (score: 8.7)
-- **Ruyi's own engine** — `coverage` mode writing tests for the core Racket modules ([iteration log](evolution-log.tsv))
-- **Private TypeScript/React apps** — 20-iteration `coverage` sessions across stores, database repos, hooks, and lib modules with priority ordering and forbidden-file protection. The same atomic guarantee held across pnpm build + test validation.
+```
+$ git log --oneline ruyi/coverage-session
 
-The evolution log tells the full story: scores started at 7.6, climbed to 8.7, with the majority of attempts discarded for not clearing the quality bar. That's the system working as designed — most AI output isn't good enough, and Ruyi's job is to keep only what passes.
+e82b4f0 test(billing): add 8 tests for src/api/billing.ts
+a3f9c21 test(session): add 14 tests for src/auth/session.ts
+  ↑ failed attempts leave no trace
+```
 
-| Metric | Value |
-|--------|-------|
-| Total iterations logged | 24 |
-| Kept (passed validation) | 7 |
-| Discarded (failed or below threshold) | 17 |
-| Score range | 7.4 → 8.7 |
-| Zero broken main branches | ✓ |
+## How it works
+
+Ruyi is a deterministic control loop that delegates creative work to Claude Code. Each iteration: pick a task, let Claude write code, run your tests. Pass? `git commit`. Fail? `git revert`. Next iteration.
+
+**Safety guarantees** — this is what separates Ruyi from "just run Claude in a loop":
+- **Atomic commit-or-revert** — every iteration either passes tests and commits, or reverts completely. No broken intermediate state, ever.
+- Always works on a branch — never touches main
+- Enforces diff size limits (default 500 lines) — no runaway changes
+- Respects forbidden files — won't touch what you protect
+- You review one clean PR at the end
+
+## Modes
+
+Describe your goal in plain English during `ruyi init` — Ruyi selects the right mode automatically.
+
+| Mode | You say | What happens |
+|------|---------|-------------|
+| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
+| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
+| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
+
+<details>
+<summary>More modes: refactor, filesize, evolve-doc</summary>
+
+| Mode | You say | What happens |
+|------|---------|-------------|
+| `refactor` | "Refactor large files" | Simplifies complex code one file at a time, build must pass |
+| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
+| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring (this README was written this way) |
+
+</details>
 
 <details>
 <summary>Why Racket?</summary>
 
-Ruyi's safety guarantees (atomic commit-or-revert, diff size limits, forbidden file enforcement) are written in Racket because these invariants are too important to leave to an LLM. Pattern matching and immutable data structures make the control loop easy to audit. The install script adds a `ruyi` alias — you never need to type `racket` directly.
+The safety invariants (atomic commit-or-revert, diff size limits, forbidden file enforcement) are too important to leave to an LLM. The entire engine is ~2,000 lines of Racket — you can read the core loop ([`engine.rkt`](engine.rkt) + [`evolve.rkt`](evolve.rkt) + [`git.rkt`](git.rkt)) in about 10 minutes. The install script adds a `ruyi` alias — you never need to type `racket` directly.
 
 </details>
 
