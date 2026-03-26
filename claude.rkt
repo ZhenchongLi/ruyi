@@ -128,24 +128,36 @@
         [else (loop (cons line acc))])))
 
   ;; Step 3: Ask Claude to synthesize into a precise spec
+  (printf "Synthesizing task spec...\n")
   (define spec-prompt
     (string-append
-     "A user wants: \"" initial-goal "\"\n\n"
+     "A user wants to modify their project.\n\n"
+     "Original goal: \"" initial-goal "\"\n\n"
      (if q-ok?
-         (string-append "Questions asked:\n" questions "\n\n")
+         (string-append "Clarifying questions:\n" questions "\n\n")
          "")
      "User's answers:\n"
      (string-join (map (lambda (a) (string-append "- " a)) answers) "\n")
      "\n\n"
-     "Synthesize this into a precise, actionable task description.\n"
-     "Include: what files to create/modify, what behavior to implement, what to test.\n"
-     "Output the task description only, no commentary."))
+     "Based on their answers, write a precise, actionable task description.\n"
+     "Include:\n"
+     "- Exactly what to implement (specific behavior)\n"
+     "- Which parts of the codebase to modify\n"
+     "- How to test it\n\n"
+     "Write in imperative mood. Be specific. Output only the task description."))
 
   (define-values (s-ok? spec)
-    (claude-execute repo-path spec-prompt #:model "sonnet" #:timeout 30))
+    (claude-execute repo-path spec-prompt #:model "sonnet" #:timeout 60))
+
+  (unless s-ok?
+    (printf "Warning: synthesis failed, using answers directly.\n"))
 
   (define final-spec
-    (if s-ok? (string-trim spec) initial-goal))
+    (if (and s-ok? (> (string-length (string-trim spec)) 0))
+        (string-trim spec)
+        ;; Fallback: combine goal + answers
+        (string-append initial-goal "\n\nUser clarifications:\n"
+                       (string-join (map (lambda (a) (string-append "- " a)) answers) "\n"))))
 
   (printf "\n--- Task spec ---\n~a\n-----------------\n\n" final-spec)
   (printf "Proceed? (Enter = yes, or type changes) > ")

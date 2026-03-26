@@ -6,7 +6,7 @@
 
 The control loop is deterministic Racket, not an LLM — safety guarantees are code, not prompts. ~2,000 lines you can [read yourself](engine.rkt).
 
-> *This README was written by Ruyi's own `evolve-doc` mode — [28 iterations](evolution-log.tsv), 14 kept, 14 discarded. Every kept version is a real commit you can diff on GitHub.*
+**Proof it works:** This README was evolved by Ruyi itself — [28 iterations](evolution-log.tsv), 14 kept, 14 discarded, 0 broken mains. Every kept version is [a real commit you can diff](https://github.com/ZhenchongLi/ruyi/commit/f98e0be).
 
 ## What a run looks like
 
@@ -53,30 +53,6 @@ a3f9c21 test(session): add 14 tests for src/auth/session.ts
   ↑ failed attempts leave no trace
 ```
 
-```
-         ┌──────────┐
-         │ Pick task │
-         └────┬─────┘
-              ▼
-     ┌─────────────────┐
-     │ Claude writes    │
-     │ code / tests     │
-     └────────┬────────┘
-              ▼
-       ┌────────────┐
-       │ Run tests   │
-       └──┬──────┬──┘
-          │      │
-     Pass ▼      ▼ Fail
-   ┌──────────┐ ┌──────────┐
-   │git commit│ │git revert│
-   └──────────┘ └──────────┘
-          │      │
-          └──┬───┘
-             ▼
-        Next iteration
-```
-
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 >
 > "Fix GitHub issues." Ruyi picks up open issues one by one, implements a fix, runs your test suite. Passing fix gets committed with the issue linked. Failing fix gets reverted. You wake up to closed issues and a single PR.
@@ -112,13 +88,30 @@ Open a new terminal (or `source` your shell rc) to pick up the alias.
 
 </details>
 
-Then:
+**Then — install to first output in 3 commands:**
 
 ```bash
 cd your-project          # any language, any framework
 ruyi init                # auto-detects everything, asks what you want
 ruyi                     # start evolving
 ```
+
+```
+ ╭─────────────────────────────────────────────────╮
+ │  Ruyi — coverage session                        │
+ │  Project: your-project (TypeScript, pnpm)       │
+ │  Branch:  ruyi/coverage-session                 │
+ ╰─────────────────────────────────────────────────╯
+
+ Iteration 1 ─────────────────────────────────────
+   Target: src/utils/parse.ts (0% coverage)
+   Claude: writing tests...
+   Run:    pnpm test -- parse.test.ts
+   Result: ✅ 6 tests pass
+   Commit: 7d1a3f2 test(parse): add 6 tests
+```
+
+That's it. Ruyi is running — each passing iteration commits, each failure reverts, and you review one PR when it's done.
 
 ## Modes
 
@@ -143,26 +136,6 @@ This is what separates Ruyi from "just run Claude in a loop":
 - Enforces diff size limits (default 500 lines) — no runaway changes
 - Respects forbidden files — won't touch what you protect
 - You review one clean PR at the end
-
-## Verified on real projects
-
-Every claim is verifiable — click the commits:
-
-- **This README** — written and iterated by Ruyi's `evolve-doc` mode. [28 iterations](evolution-log.tsv): 14 kept, 14 discarded. Every kept commit is a real diff you can inspect on GitHub:
-  - [`5044d5d`](https://github.com/ZhenchongLi/ruyi/commit/5044d5d) — first kept draft (score: 7.6)
-  - [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) — biggest single jump (score: 8.7)
-  - [`f98e0be`](https://github.com/ZhenchongLi/ruyi/commit/f98e0be) — latest iteration (score: 8.6)
-- **Ruyi's own engine** — `coverage` mode writing tests for the core Racket modules ([iteration log](evolution-log.tsv))
-- **Try it yourself** — clone any public repo with tests, run `ruyi init`, and watch. Start with a small repo to see the commit-or-revert cycle in under a minute.
-
-| Metric | Value |
-|--------|-------|
-| Total iterations logged | 28 |
-| Kept / Discarded | 14 / 14 |
-| Score range (README) | 7.6 → 8.7 |
-| Broken main branches | 0 |
-
-Most AI output isn't good enough to ship. Ruyi's atomic loop means bad output is automatically discarded — only what passes your tests survives.
 
 ## What does `init` look like?
 
