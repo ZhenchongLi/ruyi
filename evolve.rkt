@@ -1,66 +1,103 @@
 #!/usr/bin/env racket
 #lang racket/base
 (module+ main
-  (require racket/cmdline racket/string racket/format)
-  (require "config.rkt" "engine.rkt"
-           "configs/cove.rkt" "configs/docmod.rkt" "configs/ruyi.rkt"
+  (require racket/cmdline racket/string racket/format racket/path racket/file racket/list)
+  (require "config.rkt" "engine.rkt" "init.rkt"
            "modes/coverage.rkt" "modes/filesize.rkt"
            "modes/issue.rkt" "modes/refactor.rkt")
 
   ;; ============================================================
-  ;; CLI entry point for Ruyi Evolution Engine
+  ;; Ruyi — as you wish
   ;; ============================================================
 
-  ;; Registry
-  (define repos
-    (make-immutable-hash
-     (list (cons "cove" cove-config)
-           (cons "docmod" docmod-config)
-           (cons "ruyi" ruyi-config))))
-
-  (define modes
+  (define all-modes
     (make-immutable-hash
      (list (cons "coverage" coverage-mode)
            (cons "filesize" filesize-mode)
            (cons "issue" issue-mode)
            (cons "refactor" refactor-mode))))
 
-  ;; Parse args
-  (define repo-name (make-parameter #f))
-  (define mode-name-param (make-parameter #f))
+  ;; ---- Function definitions (before dispatch) ----
 
-  (command-line
-   #:program "ruyi"
-   #:usage-help
-   "Ruyi Evolution Engine — deterministic outer loop, creative inner step"
-   ""
-   "Usage: racket evolve.rkt <repo> <mode>"
-   ""
-   "Repos:  cove, docmod, ruyi"
-   "Modes:  coverage, filesize, issue, refactor"
-   ""
-   "Examples:"
-   "  racket evolve.rkt cove coverage"
-   "  racket evolve.rkt docmod coverage"
-   "  racket evolve.rkt cove filesize"
-   "  racket evolve.rkt ruyi coverage"
-   #:args (repo mode)
-   (repo-name repo)
-   (mode-name-param mode))
+  (define (print-usage)
+    (displayln "
+Ruyi — deterministic evolution engine
 
-  ;; Validate
-  (unless (hash-has-key? repos (repo-name))
-    (eprintf "Unknown repo: ~a\nAvailable: ~a\n"
-             (repo-name) (string-join (hash-keys repos) ", "))
-    (exit 1))
+Usage:
+  racket evolve.rkt init [path]     Set up ruyi for a project
+  racket evolve.rkt                 Run evolution (reads .ruyi.rkt)
+  racket evolve.rkt <mode>          Run with specific mode
+  racket evolve.rkt <repo> <mode>   Legacy: use configs/<repo>.rkt
 
-  (unless (hash-has-key? modes (mode-name-param))
-    (eprintf "Unknown mode: ~a\nAvailable: ~a\n"
-             (mode-name-param) (string-join (hash-keys modes) ", "))
-    (exit 1))
+Modes:  coverage, filesize, issue, refactor
 
-  ;; Run
-  (define repo (hash-ref repos (repo-name)))
-  (define mode-obj (hash-ref modes (mode-name-param)))
+Quick start:
+  cd your-project
+  racket ~/ruyi/evolve.rkt init     # detect project, set your goal
+  racket ~/ruyi/evolve.rkt          # start evolving"))
 
-  (evolution-loop repo mode-obj))
+  (define (run-from-local-config dir [mode-override #f])
+    (define config-file (build-path dir ".ruyi.rkt"))
+    (unless (file-exists? config-file)
+      (printf "No .ruyi.rkt found in ~a\n\n" (path->string dir))
+      (printf "Run 'ruyi init' first:\n")
+      (printf "  cd ~a\n" (path->string dir))
+      (displayln "  racket ~/ruyi/evolve.rkt init")
+      (exit 1))
+    (define config-module `(file ,(path->string config-file)))
+    (define local-config (dynamic-require config-module 'local-config))
+    (define config-mode-name (dynamic-require config-module 'local-mode-name))
+    (define mode-name (or mode-override config-mode-name))
+    (unless (hash-has-key? all-modes mode-name)
+      (eprintf "Unknown mode: ~a\nAvailable: ~a\n"
+               mode-name (string-join (hash-keys all-modes) ", "))
+      (exit 1))
+    (evolution-loop local-config (hash-ref all-modes mode-name)))
+
+  (define (run-legacy repo-name mode-name)
+    (define config-file
+      (build-path (find-system-path 'orig-dir)
+                  "configs" (string-append repo-name ".rkt")))
+    (unless (file-exists? config-file)
+      (eprintf "No config found: configs/~a.rkt\n" repo-name)
+      (exit 1))
+    (unless (hash-has-key? all-modes mode-name)
+      (eprintf "Unknown mode: ~a\n" mode-name)
+      (exit 1))
+    (define config-sym (string->symbol (string-append repo-name "-config")))
+    (define config-module `(file ,(path->string config-file)))
+    (define repo-config (dynamic-require config-module config-sym))
+    (evolution-loop repo-config (hash-ref all-modes mode-name)))
+
+  ;; ---- Dispatch ----
+
+  (define args (vector->list (current-command-line-arguments)))
+
+  (cond
+    ;; No args: run from .ruyi.rkt
+    [(empty? args)
+     (run-from-local-config (current-directory))]
+
+    ;; "init" command
+    [(string=? (first args) "init")
+     (ruyi-init! (if (> (length args) 1)
+                     (path->complete-path (string->path (second args)))
+                     (current-directory)))]
+
+    ;; Help
+    [(or (string=? (first args) "--help") (string=? (first args) "-h"))
+     (print-usage)]
+
+    ;; Single arg: mode name
+    [(and (= (length args) 1) (hash-has-key? all-modes (first args)))
+     (run-from-local-config (current-directory) (first args))]
+
+    ;; Two args: legacy <repo> <mode>
+    [(= (length args) 2)
+     (run-legacy (first args) (second args))]
+
+    ;; Unknown
+    [else
+     (eprintf "Unknown command: ~a\n" (string-join args " "))
+     (print-usage)
+     (exit 1)]))
