@@ -4,25 +4,13 @@
   (require racket/cmdline racket/string racket/format racket/path racket/file racket/list
            racket/runtime-path)
   (require "config.rkt" "engine.rkt" "init.rkt" "git.rkt" "claude.rkt"
-           "modes/coverage.rkt" "modes/filesize.rkt"
-           "modes/issue.rkt" "modes/refactor.rkt"
-           "modes/evolve-doc.rkt" "modes/freestyle.rkt")
+           "modes/freestyle.rkt")
 
   (define-runtime-path ruyi-dir ".")
 
   ;; ============================================================
   ;; Ruyi — as you wish
   ;; ============================================================
-
-  (define all-modes
-    (make-immutable-hash
-     (list (cons "coverage" coverage-mode)
-           (cons "filesize" filesize-mode)
-           (cons "issue" issue-mode)
-           (cons "refactor" refactor-mode)
-           (cons "evolve-doc" evolve-doc-mode))))
-
-  ;; ---- Function definitions ----
 
   (define (print-usage)
     (displayln "
@@ -31,16 +19,18 @@ Ruyi — as you wish
 Usage (run from your project directory):
   ruyi do <goal>                          Do something (auto-inits if needed)
   ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
+  ruyi run <mode>                         Re-run a saved mode
+  ruyi modes                              List saved modes
+  ruyi import <file-or-url>               Import a mode file
   ruyi init [path]                        Manually init (usually not needed)
-  ruyi wrun <mode>                        Run a predefined mode in worktree
   ruyi update                             Update ruyi to latest version
   ruyi version                            Show version
 
 Examples:
-  cd ~/my-project
   ruyi do \"add CLI support\"
   ruyi do \"fix auth bug\"                  # another terminal, parallel!
-  ruyi pdo \"add tests\" // \"translate README\""))
+  ruyi pdo \"add tests\" // \"translate README\"
+  ruyi run my-mode                        # re-run a saved mode"))
 
   (define (load-local-config dir)
     "Load repo-config from .ruyi.rkt in dir. Auto-inits if missing."
@@ -49,30 +39,47 @@ Examples:
     (define config-module `(file ,(path->string config-file)))
     (dynamic-require config-module 'local-config))
 
-  (define (run-from-local-config dir [mode-override #f])
-    (define config-file (build-path dir ".ruyi.rkt"))
-    (define local-config (load-local-config dir))
-    (define config-module `(file ,(path->string config-file)))
-    (define config-mode-name (dynamic-require config-module 'local-mode-name))
-    (define mode-name (or mode-override config-mode-name))
-    (unless (hash-has-key? all-modes mode-name)
-      (eprintf "Unknown mode: ~a\nAvailable: ~a\n"
-               mode-name (string-join (hash-keys all-modes) ", "))
-      (exit 1))
-    (evolution-loop local-config (hash-ref all-modes mode-name)))
+  ;; ============================================================
+  ;; Mode management: save & load reusable goals
+  ;; ============================================================
 
-  (define (suggest-next-mode dir kept)
-    "After a freestyle do, suggest running a predefined mode."
+  (define (modes-dir dir)
+    (build-path dir ".ruyi-modes"))
+
+  (define (save-mode! dir goal kept)
+    "After a successful freestyle run, offer to save the goal as a reusable mode."
     (when (> kept 0)
-      (printf "\nContinue with a mode?\n")
-      (printf "  coverage  — improve test coverage\n")
-      (printf "  refactor  — simplify large files\n")
-      (printf "  issue     — fix GitHub issues\n")
-      (printf "  filesize  — break up big files\n")
-      (define answer (read-line-interactive "\nMode (Enter to skip): "))
+      (define answer (read-line-interactive "\nSave as reusable mode? Name (Enter to skip): "))
       (when (and (not (string=? answer ""))
-                 (hash-has-key? all-modes answer))
-        (run-local-wrun dir answer))))
+                 (regexp-match? #rx"^[a-zA-Z0-9_-]+$" answer))
+        (define mdir (modes-dir dir))
+        (make-directory* mdir)
+        (define mode-file (build-path mdir (string-append answer ".txt")))
+        (call-with-output-file mode-file
+          (lambda (out) (displayln goal out))
+          #:exists 'replace)
+        (printf "Saved: .ruyi-modes/~a.txt\n" answer)
+        (printf "Re-run anytime: ruyi run ~a\n" answer))))
+
+  (define (load-mode dir name)
+    "Load a saved mode by name. Returns the goal string or #f."
+    (define mode-file (build-path (modes-dir dir) (string-append name ".txt")))
+    (and (file-exists? mode-file)
+         (string-trim (file->string mode-file))))
+
+  (define (list-modes dir)
+    "List available saved modes."
+    (define mdir (modes-dir dir))
+    (if (directory-exists? mdir)
+        (for/list ([f (directory-list mdir)]
+                   #:when (string-suffix? (path->string f) ".txt"))
+          (define name (path->string f))
+          (substring name 0 (- (string-length name) 4)))
+        '()))
+
+  ;; ============================================================
+  ;; Run commands
+  ;; ============================================================
 
   (define (run-local-do dir goal)
     "Run freestyle evolution in worktree, using .ruyi.rkt from cwd."
@@ -84,7 +91,7 @@ Examples:
       (evolution-loop/worktree repo fm))
     (printf "\nDone: ~a (kept ~a)\n" branch kept)
     (when pr-url (printf "PR: ~a\n" pr-url))
-    (suggest-next-mode dir kept))
+    (save-mode! dir goal kept))
 
   (define (run-local-pdo dir goals)
     "Run multiple freestyle goals in parallel, using .ruyi.rkt from cwd."
@@ -96,108 +103,14 @@ Examples:
           #:clarify? #f)))
     (run-parallel-evolutions repo modes))
 
-  (define (run-local-wrun dir mode-name)
-    "Run a predefined mode in worktree, using .ruyi.rkt from cwd."
-    (define repo (load-local-config dir))
-    (unless (hash-has-key? all-modes mode-name)
-      (eprintf "Unknown mode: ~a\n" mode-name)
-      (exit 1))
-    (define-values (branch kept pr-url)
-      (evolution-loop/worktree repo (hash-ref all-modes mode-name)))
-    (printf "\nDone: ~a (kept ~a)\n" branch kept)
-    (when pr-url (printf "PR: ~a\n" pr-url)))
-
-  (define (run-legacy repo-name mode-name)
-    (define config-file
-      (build-path ruyi-dir
-                  "configs" (string-append repo-name ".rkt")))
-    (unless (file-exists? config-file)
-      (eprintf "No config found: configs/~a.rkt\n" repo-name)
-      (exit 1))
-    (unless (hash-has-key? all-modes mode-name)
-      (eprintf "Unknown mode: ~a\n" mode-name)
-      (exit 1))
-    (define config-sym (string->symbol (string-append repo-name "-config")))
-    (define config-module `(file ,(path->string config-file)))
-    (define repo-config (dynamic-require config-module config-sym))
-    (evolution-loop repo-config (hash-ref all-modes mode-name)))
-
-  (define (run-freestyle repo-name goal)
-    (define config-file
-      (build-path ruyi-dir
-                  "configs" (string-append repo-name ".rkt")))
-    (unless (file-exists? config-file)
-      (eprintf "No config found: configs/~a.rkt\n" repo-name)
-      (exit 1))
-    (define config-sym (string->symbol (string-append repo-name "-config")))
-    (define config-module `(file ,(path->string config-file)))
-    (define repo-config (dynamic-require config-module config-sym))
-    (define fm (make-freestyle-mode goal
-                 #:repo-path (repo-config-path repo-config)))
-    (evolution-loop repo-config fm))
-
-  (define (load-repo-config repo-name)
-    (define config-file
-      (build-path ruyi-dir
-                  "configs" (string-append repo-name ".rkt")))
-    (unless (file-exists? config-file)
-      (eprintf "No config found: configs/~a.rkt\n" repo-name)
-      (exit 1))
-    (define config-sym (string->symbol (string-append repo-name "-config")))
-    (define config-module `(file ,(path->string config-file)))
-    (dynamic-require config-module config-sym))
-
-  (define (run-parallel-modes repo-name mode-names)
-    "Run multiple predefined modes in parallel on the same repo."
-    (define repo (load-repo-config repo-name))
-    (define modes
-      (for/list ([mn (in-list mode-names)])
-        (unless (hash-has-key? all-modes mn)
-          (eprintf "Unknown mode: ~a\n" mn)
-          (exit 1))
-        (hash-ref all-modes mn)))
-    (run-parallel-evolutions repo modes))
-
-  (define (run-parallel-freestyle repo-name goals)
-    "Run multiple freestyle goals in parallel on the same repo."
-    (define repo (load-repo-config repo-name))
-    (define modes
-      (for/list ([goal (in-list goals)])
-        (make-freestyle-mode goal
-          #:repo-path (repo-config-path repo)
-          #:clarify? #f)))
-    (run-parallel-evolutions repo modes))
-
-  (define (run-worktree-freestyle repo-name goal)
-    "Run a single freestyle evolution in its own worktree."
-    (define repo (load-repo-config repo-name))
-    (define fm (make-freestyle-mode goal
-                 #:repo-path (repo-config-path repo)
-                 #:clarify? #f))
-    (define-values (branch kept pr-url)
-      (evolution-loop/worktree repo fm))
-    (printf "\nDone: ~a (kept ~a)\n" branch kept)
-    (when pr-url (printf "PR: ~a\n" pr-url)))
-
-  (define (run-worktree-mode repo-name mode-name)
-    "Run a single predefined mode in its own worktree."
-    (define repo (load-repo-config repo-name))
-    (unless (hash-has-key? all-modes mode-name)
-      (eprintf "Unknown mode: ~a\n" mode-name)
-      (exit 1))
-    (define-values (branch kept pr-url)
-      (evolution-loop/worktree repo (hash-ref all-modes mode-name)))
-    (printf "\nDone: ~a (kept ~a)\n" branch kept)
-    (when pr-url (printf "PR: ~a\n" pr-url)))
-
   ;; ---- Dispatch ----
 
   (define args (vector->list (current-command-line-arguments)))
 
   (cond
-    ;; No args: run from .ruyi.rkt
+    ;; No args: show help
     [(empty? args)
-     (run-from-local-config (current-directory))]
+     (print-usage)]
 
     ;; "init" command
     [(string=? (first args) "init")
@@ -209,8 +122,6 @@ Examples:
     [(or (string=? (first args) "--help") (string=? (first args) "-h"))
      (print-usage)]
 
-    ;; ---- Local commands (run from cwd with .ruyi.rkt) ----
-
     ;; ruyi do <goal...>
     [(and (>= (length args) 2) (string=? (first args) "do"))
      (run-local-do (current-directory) (string-join (cdr args) " "))]
@@ -221,43 +132,45 @@ Examples:
      (define goals (map string-trim (string-split goal-str "//")))
      (run-local-pdo (current-directory) goals)]
 
-    ;; ruyi wrun <mode>
-    [(and (= (length args) 2) (string=? (first args) "wrun"))
-     (run-local-wrun (current-directory) (second args))]
+    ;; ruyi run <mode>
+    [(and (= (length args) 2) (string=? (first args) "run"))
+     (define dir (current-directory))
+     (define name (second args))
+     (define goal (load-mode dir name))
+     (unless goal
+       (eprintf "Mode not found: ~a\n" name)
+       (define available (list-modes dir))
+       (when (not (null? available))
+         (eprintf "Available: ~a\n" (string-join available ", ")))
+       (exit 1))
+     (run-local-do dir goal)]
 
-    ;; ---- Legacy commands (<repo> prefix, uses configs/<repo>.rkt) ----
+    ;; ruyi modes
+    [(and (= (length args) 1) (string=? (first args) "modes"))
+     (define available (list-modes (current-directory)))
+     (cond
+       [(null? available)
+        (displayln "No saved modes. Run `ruyi do \"goal\"` and save one after.")]
+       [else
+        (printf "Saved modes:\n")
+        (for ([m (in-list available)])
+          (define goal (load-mode (current-directory) m))
+          (printf "  ~a — ~a\n" m (if goal goal "?")))])]
 
-    ;; <repo> do <goal...>
-    [(and (>= (length args) 3) (string=? (second args) "do"))
-     (define repo-name (first args))
-     (define goal (string-join (cddr args) " "))
-     (run-worktree-freestyle repo-name goal)]
-
-    ;; <repo> wrun <mode>
-    [(and (= (length args) 3) (string=? (second args) "wrun"))
-     (run-worktree-mode (first args) (third args))]
-
-    ;; <repo> parallel <mode1> <mode2> ...
-    [(and (>= (length args) 3) (string=? (second args) "parallel"))
-     (define repo-name (first args))
-     (define mode-names (cddr args))
-     (run-parallel-modes repo-name mode-names)]
-
-    ;; <repo> pdo <goal1> // <goal2> // ...
-    [(and (>= (length args) 3) (string=? (second args) "pdo"))
-     (define repo-name (first args))
-     (define goal-str (string-join (cddr args) " "))
-     (define goals
-       (map string-trim (string-split goal-str "//")))
-     (run-parallel-freestyle repo-name goals)]
-
-    ;; Single arg: mode name
-    [(and (= (length args) 1) (hash-has-key? all-modes (first args)))
-     (run-from-local-config (current-directory) (first args))]
-
-    ;; Two args: legacy <repo> <mode>
-    [(= (length args) 2)
-     (run-legacy (first args) (second args))]
+    ;; ruyi import <file>
+    [(and (= (length args) 2) (string=? (first args) "import"))
+     (define source (second args))
+     (define dir (current-directory))
+     (define mdir (modes-dir dir))
+     (make-directory* mdir)
+     (define source-path (string->path source))
+     (unless (file-exists? source-path)
+       (eprintf "File not found: ~a\n" source)
+       (exit 1))
+     (define name (path->string (file-name-from-path source-path)))
+     (define dest (build-path mdir name))
+     (copy-file source-path dest #t)
+     (printf "Imported: .ruyi-modes/~a\n" name)]
 
     ;; Unknown
     [else
