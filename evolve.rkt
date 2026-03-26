@@ -25,37 +25,44 @@
     (displayln "
 Ruyi — as you wish
 
-Usage:
-  racket evolve.rkt init [path]           Set up ruyi for a project
-  racket evolve.rkt                       Run evolution (reads .ruyi.rkt)
-  racket evolve.rkt <mode>                Run with specific mode
-  racket evolve.rkt <repo> <mode>         Legacy: use configs/<repo>.rkt
-  racket evolve.rkt <repo> do <goal>      Freestyle (worktree, safe to run multiple)
-  racket evolve.rkt <repo> do-local <goal>  Freestyle (local working dir, legacy)
-  racket evolve.rkt <repo> wrun <mode>    Run mode in worktree (safe to run multiple)
-  racket evolve.rkt <repo> parallel <mode1> <mode2> ...
-                                          Run multiple modes in parallel
-  racket evolve.rkt <repo> pdo <goal1> // <goal2> // ...
-                                          Run multiple freestyle goals in parallel
+Usage (run from your project directory with .ruyi.rkt):
+  ruyi init [path]                        Set up ruyi for a project
+  ruyi do <goal>                          Do something (worktree, can run many)
+  ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
+  ruyi wrun <mode>                        Run a mode in worktree
+  ruyi <mode>                             Run a mode (local)
+  ruyi                                    Run default mode from .ruyi.rkt
+
+Legacy (specify repo config):
+  ruyi <repo> do <goal>                   Freestyle with configs/<repo>.rkt
+  ruyi <repo> <mode>                      Run mode with configs/<repo>.rkt
 
 Modes:  coverage, filesize, issue, refactor, evolve-doc
 
 Examples:
-  racket evolve.rkt cove do \"add CLI support\"     # worktree, can start many
-  racket evolve.rkt cove wrun coverage              # worktree
-  racket evolve.rkt cove parallel coverage filesize
-  racket evolve.rkt cove pdo \"add CLI support\" // \"translate README\""))
+  cd ~/my-project
+  ruyi init
+  ruyi do \"add CLI support\"
+  ruyi do \"fix auth bug\"                  # run in another terminal, parallel!
+  ruyi pdo \"add tests\" // \"translate README\"
+  ruyi wrun coverage"))
 
-  (define (run-from-local-config dir [mode-override #f])
+  (define (load-local-config dir)
+    "Load repo-config from .ruyi.rkt in dir. Exits if not found."
     (define config-file (build-path dir ".ruyi.rkt"))
     (unless (file-exists? config-file)
       (printf "No .ruyi.rkt found in ~a\n\n" (path->string dir))
       (displayln "Run 'ruyi init' first:")
       (printf "  cd ~a\n" (path->string dir))
-      (displayln "  racket ~/ruyi/evolve.rkt init")
+      (displayln "  ruyi init")
       (exit 1))
     (define config-module `(file ,(path->string config-file)))
-    (define local-config (dynamic-require config-module 'local-config))
+    (dynamic-require config-module 'local-config))
+
+  (define (run-from-local-config dir [mode-override #f])
+    (define config-file (build-path dir ".ruyi.rkt"))
+    (define local-config (load-local-config dir))
+    (define config-module `(file ,(path->string config-file)))
     (define config-mode-name (dynamic-require config-module 'local-mode-name))
     (define mode-name (or mode-override config-mode-name))
     (unless (hash-has-key? all-modes mode-name)
@@ -63,6 +70,38 @@ Examples:
                mode-name (string-join (hash-keys all-modes) ", "))
       (exit 1))
     (evolution-loop local-config (hash-ref all-modes mode-name)))
+
+  (define (run-local-do dir goal)
+    "Run freestyle evolution in worktree, using .ruyi.rkt from cwd."
+    (define repo (load-local-config dir))
+    (define fm (make-freestyle-mode goal
+                 #:repo-path (repo-config-path repo)
+                 #:clarify? #f))
+    (define-values (branch kept pr-url)
+      (evolution-loop/worktree repo fm))
+    (printf "\nDone: ~a (kept ~a)\n" branch kept)
+    (when pr-url (printf "PR: ~a\n" pr-url)))
+
+  (define (run-local-pdo dir goals)
+    "Run multiple freestyle goals in parallel, using .ruyi.rkt from cwd."
+    (define repo (load-local-config dir))
+    (define modes
+      (for/list ([goal (in-list goals)])
+        (make-freestyle-mode goal
+          #:repo-path (repo-config-path repo)
+          #:clarify? #f)))
+    (run-parallel-evolutions repo modes))
+
+  (define (run-local-wrun dir mode-name)
+    "Run a predefined mode in worktree, using .ruyi.rkt from cwd."
+    (define repo (load-local-config dir))
+    (unless (hash-has-key? all-modes mode-name)
+      (eprintf "Unknown mode: ~a\n" mode-name)
+      (exit 1))
+    (define-values (branch kept pr-url)
+      (evolution-loop/worktree repo (hash-ref all-modes mode-name)))
+    (printf "\nDone: ~a (kept ~a)\n" branch kept)
+    (when pr-url (printf "PR: ~a\n" pr-url)))
 
   (define (run-legacy repo-name mode-name)
     (define config-file
@@ -166,29 +205,41 @@ Examples:
     [(or (string=? (first args) "--help") (string=? (first args) "-h"))
      (print-usage)]
 
-    ;; Freestyle (worktree, default): <repo> do <goal...>
+    ;; ---- Local commands (run from cwd with .ruyi.rkt) ----
+
+    ;; ruyi do <goal...>
+    [(and (>= (length args) 2) (string=? (first args) "do"))
+     (run-local-do (current-directory) (string-join (cdr args) " "))]
+
+    ;; ruyi pdo <goal1> // <goal2> // ...
+    [(and (>= (length args) 2) (string=? (first args) "pdo"))
+     (define goal-str (string-join (cdr args) " "))
+     (define goals (map string-trim (string-split goal-str "//")))
+     (run-local-pdo (current-directory) goals)]
+
+    ;; ruyi wrun <mode>
+    [(and (= (length args) 2) (string=? (first args) "wrun"))
+     (run-local-wrun (current-directory) (second args))]
+
+    ;; ---- Legacy commands (<repo> prefix, uses configs/<repo>.rkt) ----
+
+    ;; <repo> do <goal...>
     [(and (>= (length args) 3) (string=? (second args) "do"))
      (define repo-name (first args))
      (define goal (string-join (cddr args) " "))
      (run-worktree-freestyle repo-name goal)]
 
-    ;; Freestyle (local, legacy): <repo> do-local <goal...>
-    [(and (>= (length args) 3) (string=? (second args) "do-local"))
-     (define repo-name (first args))
-     (define goal (string-join (cddr args) " "))
-     (run-freestyle repo-name goal)]
-
-    ;; Worktree mode: <repo> wrun <mode>
+    ;; <repo> wrun <mode>
     [(and (= (length args) 3) (string=? (second args) "wrun"))
      (run-worktree-mode (first args) (third args))]
 
-    ;; Parallel modes: <repo> parallel <mode1> <mode2> ...
+    ;; <repo> parallel <mode1> <mode2> ...
     [(and (>= (length args) 3) (string=? (second args) "parallel"))
      (define repo-name (first args))
      (define mode-names (cddr args))
      (run-parallel-modes repo-name mode-names)]
 
-    ;; Parallel freestyle: <repo> pdo <goal1> // <goal2> // ...
+    ;; <repo> pdo <goal1> // <goal2> // ...
     [(and (>= (length args) 3) (string=? (second args) "pdo"))
      (define repo-name (first args))
      (define goal-str (string-join (cddr args) " "))

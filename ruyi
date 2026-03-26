@@ -1,0 +1,48 @@
+#!/bin/bash
+# Ruyi — as you wish
+RUYI_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# --- Auto-update check (background, non-blocking) ---
+_ruyi_check_update() {
+  local marker="$RUYI_DIR/.last-update-check"
+  local now=$(date +%s)
+
+  # Check at most once per hour
+  if [ -f "$marker" ]; then
+    local last=$(cat "$marker" 2>/dev/null || echo 0)
+    (( now - last < 3600 )) && return
+  fi
+
+  echo "$now" > "$marker"
+
+  # Fetch quietly and compare
+  git -C "$RUYI_DIR" fetch origin main --quiet 2>/dev/null || return
+  local local_head=$(git -C "$RUYI_DIR" rev-parse HEAD 2>/dev/null)
+  local remote_head=$(git -C "$RUYI_DIR" rev-parse origin/main 2>/dev/null)
+
+  if [ "$local_head" != "$remote_head" ]; then
+    local behind=$(git -C "$RUYI_DIR" rev-list --count HEAD..origin/main 2>/dev/null || echo "?")
+    echo -e "\033[33m[ruyi] Update available ($behind new commits). Run: ruyi update\033[0m" >&2
+  fi
+}
+
+# Run update check in background (won't delay startup)
+_ruyi_check_update &
+
+# --- Commands handled by the launcher ---
+case "${1:-}" in
+  update)
+    echo "=== Updating Ruyi ==="
+    git -C "$RUYI_DIR" pull --ff-only origin main
+    echo "Compiling..."
+    (cd "$RUYI_DIR" && raco make evolve.rkt 2>&1)
+    echo "Updated to: $(git -C "$RUYI_DIR" log -1 --format='%h %s')"
+    exit 0
+    ;;
+  version)
+    echo "ruyi $(git -C "$RUYI_DIR" log -1 --format='%h (%ci)' 2>/dev/null || echo 'unknown')"
+    exit 0
+    ;;
+esac
+
+exec racket "$RUYI_DIR/evolve.rkt" "$@"

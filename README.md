@@ -119,73 +119,57 @@ The Racket engine controls every step. Claude never decides whether to commit or
 
 ## Quick Start
 
-<details>
-<summary><strong>Prerequisites</strong> — if you use Claude Code, you're most of the way there</summary>
+You need [Claude Code](https://claude.ai/code) — that's it. Tell Claude Code:
 
-You need three things: **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview)** (installed and authenticated — `claude --version` to check), **Git**, and **Racket** (or Docker as an alternative). You never write Racket — it's just the runtime, like Node or Python.
-
-</details>
-
-The install takes ~2 minutes and adds a `ruyi` alias. You interact with Ruyi in plain English.
-
-**macOS (3 commands):**
-```bash
-brew install minimal-racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
+```
+Install ruyi: clone git@github.outlook:ZhenchongLi/ruyi.git to ~/.ruyi,
+install dependencies (git, gh, racket) if missing, run "cd ~/.ruyi && raco make evolve.rkt",
+then link ~/.ruyi/ruyi to ~/.local/bin/ruyi and make sure ~/.local/bin is in my PATH.
 ```
 
-<details>
-<summary>Linux (Ubuntu/Debian / Fedora)</summary>
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get install racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.bashrc && source ~/.bashrc
-```
-
-**Fedora:**
-```bash
-sudo dnf install racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.bashrc && source ~/.bashrc
-```
-
-</details>
-
-<details>
-<summary>Don't want to install Racket? Use Docker</summary>
+Or run the install script directly:
 
 ```bash
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-alias ruyi="docker run --rm -v \$(pwd):/work -v ~/.claude:/root/.claude -w /work ghcr.io/zhenchongli/ruyi"
+bash ~/.ruyi/install.sh
 ```
 
-Same behavior, zero runtime install. Requires Docker and Claude Code CLI on the host.
-
-</details>
-
-<details>
-<summary>Prefer a one-liner? Install script</summary>
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
-```
-
-[Read the script first](https://github.com/ZhenchongLi/ruyi/blob/main/install.sh) — it does exactly the 3 steps above: installs Racket if missing, clones the repo, adds the alias. After running, `source` your shell rc or open a new terminal.
-
-</details>
+Ruyi auto-updates — when new commits are available, it tells you. Run `ruyi update` to pull.
 
 **Then — start evolving:**
 
 ```bash
-cd your-project          # any language, any framework
-ruyi init                # auto-detects everything, asks what you want
-ruyi                     # start evolving
+cd your-project
+ruyi init                        # auto-detects language, asks your goal
+ruyi do "add CLI support"        # runs in worktree, won't block your repo
+ruyi do "fix auth bug"           # open another terminal — parallel!
+ruyi pdo "add tests" // "docs"   # or launch multiple in one shot
 ```
 
 Each passing iteration commits, each failure reverts. You review one PR when it's done.
+
+<details>
+<summary>Manual install (no Claude Code)</summary>
+
+**macOS:**
+```bash
+brew install minimal-racket gh
+git clone git@github.outlook:ZhenchongLi/ruyi.git ~/.ruyi
+cd ~/.ruyi && raco make evolve.rkt
+mkdir -p ~/.local/bin && ln -sf ~/.ruyi/ruyi ~/.local/bin/ruyi
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get install racket
+# install gh: https://cli.github.com/
+git clone git@github.outlook:ZhenchongLi/ruyi.git ~/.ruyi
+cd ~/.ruyi && raco make evolve.rkt
+mkdir -p ~/.local/bin && ln -sf ~/.ruyi/ruyi ~/.local/bin/ruyi
+```
+
+Add `~/.local/bin` to PATH if not already there.
+
+</details>
 
 ## Modes
 
