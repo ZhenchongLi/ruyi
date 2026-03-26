@@ -40,7 +40,7 @@
   (journal-init! repo (mode-name mode-obj))
 
   ;; Track results for summary
-  (define kept-tasks '())
+  (define kept-tasks '())    ; list of task structs
   (define discarded-count 0)
 
   ;; Main loop (auto-continues, Ctrl-C to stop)
@@ -53,12 +53,12 @@
       [(> i (repo-config-max-iterations repo))
        (printf "\nReached iteration limit (~a).\n"
                (repo-config-max-iterations repo))
-       (finish-evolution repo branch kept-tasks discarded-count)]
+       (finish-evolution repo mode-obj branch kept-tasks discarded-count)]
 
       ;; Termination: consecutive failures
       [(>= consecutive-fails (repo-config-max-consecutive-fails repo))
        (printf "\n~a consecutive failures. Stopping.\n" consecutive-fails)
-       (finish-evolution repo branch kept-tasks discarded-count)]
+       (finish-evolution repo mode-obj branch kept-tasks discarded-count)]
 
       ;; Normal execution
       [else
@@ -67,7 +67,7 @@
        (cond
          [(not tsk)
           (printf "\nNo more tasks found.\n")
-          (finish-evolution repo branch kept-tasks discarded-count)]
+          (finish-evolution repo mode-obj branch kept-tasks discarded-count)]
 
          [else
           (printf "\n[~a/~a] ~a\n" i (repo-config-max-iterations repo)
@@ -86,7 +86,7 @@
 
           ;; Track for summary
           (when (eq? (iteration-result-status result) 'keep)
-            (set! kept-tasks (cons (task-description tsk) kept-tasks)))
+            (set! kept-tasks (cons tsk kept-tasks)))
           (when (eq? (iteration-result-status result) 'discard)
             (set! discarded-count (add1 discarded-count)))
 
@@ -103,7 +103,7 @@
 ;; Finish: summary + merge + cleanup
 ;; ============================================================
 
-(define (finish-evolution repo branch kept-tasks discarded-count)
+(define (finish-evolution repo mode-obj branch kept-tasks discarded-count)
   (define kept-count (length kept-tasks))
 
   ;; Show summary
@@ -112,8 +112,8 @@
   (printf "Discarded: ~a\n" discarded-count)
   (when (> kept-count 0)
     (printf "\nChanges made:\n")
-    (for ([desc (in-list (reverse kept-tasks))])
-      (printf "  + ~a\n" desc)))
+    (for ([tsk (in-list (reverse kept-tasks))])
+      (printf "  + ~a\n" (task-description tsk))))
   (printf "=========================\n")
 
   ;; If nothing was kept, just go back to main
@@ -122,29 +122,22 @@
     (shell! repo "git" "checkout" (repo-config-base-branch repo))
     (return-void))
 
-  ;; Ask to merge
-  (printf "\nApply these changes to ~a? (Enter = yes, 'no' = discard) > "
-          (repo-config-base-branch repo))
-  (flush-output)
-  (define answer (read-line))
-  (define trimmed (if (eof-object? answer) "" (string-trim answer)))
+  ;; Ask to merge via PR
+  (define answer (read-line-interactive "Merge to main? (y/n) "))
 
   (cond
-    [(string=? trimmed "no")
-     (printf "Changes kept on branch: ~a\n" branch)
-     (shell! repo "git" "checkout" (repo-config-base-branch repo))]
+    [(string=? answer "y")
+     (with-handlers
+       ([exn:fail?
+         (lambda (e)
+           (printf "PR merge failed: ~a\n" (exn-message e)))])
+       (git-push-branch! repo)
+       (define pr-url (gh-create-and-merge-pr! repo mode-obj (reverse kept-tasks)))
+       (printf "~a\n" pr-url)
+       (printf "Done.\n"))]
     [else
-     ;; Merge to main
-     (define base (repo-config-base-branch repo))
-     (shell! repo "git" "checkout" base)
-     (shell! repo "git" "merge" branch)
-     (printf "\nMerged to ~a.\n" base)
-
-     ;; Clean up branch
-     (with-handlers ([exn:fail? (lambda (_) (void))])
-       (shell! repo "git" "branch" "-d" branch))
-
-     (printf "Done.\n")]))
+     (printf "Changes kept on branch: ~a\n" branch)
+     (shell! repo "git" "checkout" (repo-config-base-branch repo))]))
 
 (define (return-void) (void))
 
