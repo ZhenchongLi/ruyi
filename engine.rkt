@@ -35,8 +35,9 @@
            (validation-result-failed-step baseline)))
   (printf "Baseline: PASSED\n")
 
-  ;; Init log
+  ;; Init log + journal
   (log-init! repo)
+  (journal-init! repo (mode-name mode-obj))
 
   ;; Main loop
   (let loop ([i 1]
@@ -167,6 +168,14 @@
          (judge-evaluate (repo-config-path repo) rubric content))
        ;; Always pass feedback to next round (whether keep or discard)
        (set-feedback! score weaknesses feedback)
+       ;; Journal detailed entry
+       (journal-iteration! repo
+                           (format "~a" (hash-ref (task-extra tsk) 'min-score 0))
+                           (if (>= score min-score) "keep" "discard")
+                           (task-description tsk)
+                           #:score score
+                           #:weaknesses weaknesses
+                           #:feedback feedback)
        (cond
          [(>= score min-score)
           (define hash (git-commit! repo mode-obj tsk))

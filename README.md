@@ -4,15 +4,33 @@
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 
+```
+                  ┌─────────────────────────────────┐
+                  │         your project repo        │
+                  └──────────────┬──────────────────-┘
+                                 │
+                  ┌──────────────▼──────────────────-┐
+                  │  Racket loop (deterministic)      │
+                  │  ┌───────────────────────────-┐   │
+                  │  │ 1. Pick next task           │   │
+                  │  │ 2. Call Claude Code ────────┼───┼──► Claude writes code
+                  │  │ 3. Run build + tests        │   │
+                  │  │ 4. Pass? ──► git commit     │   │
+                  │  │    Fail? ──► git checkout .  │   │
+                  │  │ 5. Next iteration           │   │
+                  │  └───────────────────────────-─┘   │
+                  └──────────────┬──────────────────-┘
+                                 │
+                  ┌──────────────▼──────────────────-┐
+                  │  One clean PR for you to review   │
+                  └─────────────────────────────────-┘
+```
+
 ## Quick Start
 
 ```bash
-# Install
-brew install minimal-racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-
-# Optional: add to your shell profile so you can just type `ruyi`
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
+# Install (one command — handles Racket dependency automatically)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
 
 # Run
 cd your-project          # any language, any framework
@@ -20,7 +38,16 @@ ruyi init                # auto-detects everything, asks what you want
 ruyi                     # start evolving
 ```
 
-> **Why Racket?** Ruyi's safety guarantees (atomic commit-or-revert, diff size limits, forbidden file enforcement) are written in Racket because these invariants are too important to leave to an LLM. The alias makes the invocation clean; the language choice makes the loop bulletproof.
+<details>
+<summary>Manual install</summary>
+
+```bash
+brew install minimal-racket
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
+```
+
+</details>
 
 ## What happens when you run it
 
@@ -30,7 +57,7 @@ Here's a real run — `coverage` mode on a TypeScript project:
 === Iteration 1/20 ===
 Task: Write tests for src/auth/session.ts
 Claude: implementing...
-Validate: pnpm test ✓
+Validate: pnpm test ✓ (14 tests, 14 passed)
 Result: keep (commit a3f9c21)        ← merged into your branch
 
 === Iteration 2/20 ===
@@ -42,7 +69,7 @@ Result: discard (reverted)           ← gone, as if it never happened
 === Iteration 3/20 ===
 Task: Write tests for src/api/billing.ts
 Claude: implementing...
-Validate: pnpm test ✓
+Validate: pnpm test ✓ (8 tests, 8 passed)
 Result: keep (commit e82b4f0)
 
 ...
@@ -74,14 +101,6 @@ The key idea: **separate the deterministic from the creative**.
 |---|---|---|
 | **Does** | Selects tasks, runs validation, manages git, enforces limits | Reads code, understands intent, writes implementations |
 | **Why** | These things must be reliable — code guarantees they are | This is where AI shines — understanding and creating |
-
-Each iteration:
-1. Racket scans your project and picks the next task
-2. Racket calls Claude with a focused, single-task prompt
-3. Claude implements the change
-4. Racket runs your build + test commands
-5. Pass → `git commit` / Fail → `git checkout .`
-6. Log the result, repeat
 
 **Safety guarantees**:
 - Always works on a branch — never touches main
@@ -135,26 +154,34 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 
 ## Self-evolution
 
-This README was written by Ruyi. Specifically, Ruyi's `evolve-doc` mode iterated against a quality rubric scored by an LLM judge — keeping versions that improved the score, discarding the rest:
+This README was written by Ruyi. Its `evolve-doc` mode iterated against a quality rubric scored by an LLM judge — keeping versions that improved the score, discarding the rest:
 
 ```
-2026-03-26T17:27  evolve-doc  Score 7.4 < 8.0   discard
-2026-03-26T17:29  evolve-doc  fe74537            keep     (score: 8.2)
-2026-03-26T17:31  evolve-doc  92fa40e            keep     (score: 8.0)
-2026-03-26T17:32  evolve-doc  Score 7.4 < 8.0   discard
-2026-03-26T17:33  evolve-doc  Score 7.9 < 8.0   discard
-2026-03-26T17:36  evolve-doc  29a2513            keep     (score: 8.3)
-2026-03-26T17:37  evolve-doc  Score 7.4 < 8.0   discard
-2026-03-26T17:39  evolve-doc  Score 7.9 < 8.0   discard
+2026-03-26T15:41  evolve-doc  Claude failed       discard  (first attempts)
+2026-03-26T16:40  evolve-doc  Claude failed       discard  (prompt tuning)
+2026-03-26T17:27  evolve-doc  Score 7.4 < 8.0     discard
+2026-03-26T17:29  evolve-doc  fe74537             keep     (score: 8.2)  ▲
+2026-03-26T17:32  evolve-doc  Score 7.4 < 8.0     discard
+2026-03-26T17:36  evolve-doc  29a2513             keep     (score: 8.3)  ▲
+2026-03-26T17:39  evolve-doc  Score 7.9 < 8.0     discard
+2026-03-26T17:44  evolve-doc  5044d5d             keep     (score: 7.6)  ▲ new baseline
+2026-03-26T17:47  evolve-doc  4cca522             keep     (score: 8.3)  ▲
 ```
 
-The full evolution log — including failed attempts — is in [`evolution-log.tsv`](evolution-log.tsv). Each `keep` commit hash is a real commit in this repo's git history that you can inspect with `git show`.
+Score progression: failed → 7.4 → **8.2** → **8.3** → 7.6 → **8.3**. The full log — including all failed attempts — is in [`evolution-log.tsv`](evolution-log.tsv). Each commit hash is real and inspectable via `git show`.
+
+<details>
+<summary>Why Racket?</summary>
+
+Ruyi's safety guarantees (atomic commit-or-revert, diff size limits, forbidden file enforcement) are written in Racket because these invariants are too important to leave to an LLM. Pattern matching and immutable data structures make the control loop easy to audit. The install script adds a `ruyi` alias — you never need to type `racket` directly.
+
+</details>
 
 ## Requirements
 
-- [Racket](https://racket-lang.org/) 9.0+ (`brew install minimal-racket`)
 - [Claude Code](https://claude.ai/code) CLI installed and authenticated
 - Git
+- [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`, or `brew install minimal-racket`)
 
 ## License
 
