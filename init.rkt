@@ -48,9 +48,7 @@
   (printf "  - Refactor large files\n")
   (printf "  - Translate docs to English\n")
   (printf "  - Any goal you have in mind\n")
-  (printf "\n> ")
-  (flush-output)
-  (define intent (read-line))
+  (define intent (read-line-interactive "\n> "))
 
   (when (or (eof-object? intent) (string=? (string-trim intent) ""))
     (printf "No intent provided. Using default: improve test coverage\n")
@@ -90,7 +88,7 @@
       (define m (regexp-match
                  (regexp (string-append "\"" field "\"\\s*:\\s*\"([^\"]+)\""))
                  str))
-      (and m (bytes->string/utf-8 (cadr m))))
+      (and m (cadr m)))
 
     (when (string-contains? response "\"mode\"")
       (define mode-val (extract-field "mode" response))
