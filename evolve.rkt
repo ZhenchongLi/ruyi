@@ -1,11 +1,14 @@
 #!/usr/bin/env racket
 #lang racket/base
 (module+ main
-  (require racket/cmdline racket/string racket/format racket/path racket/file racket/list)
+  (require racket/cmdline racket/string racket/format racket/path racket/file racket/list
+           racket/runtime-path)
   (require "config.rkt" "engine.rkt" "init.rkt" "git.rkt"
            "modes/coverage.rkt" "modes/filesize.rkt"
            "modes/issue.rkt" "modes/refactor.rkt"
            "modes/evolve-doc.rkt" "modes/freestyle.rkt")
+
+  (define-runtime-path ruyi-dir ".")
 
   ;; ============================================================
   ;; Ruyi — as you wish
@@ -105,7 +108,7 @@ Examples:
 
   (define (run-legacy repo-name mode-name)
     (define config-file
-      (build-path (find-system-path 'orig-dir)
+      (build-path ruyi-dir
                   "configs" (string-append repo-name ".rkt")))
     (unless (file-exists? config-file)
       (eprintf "No config found: configs/~a.rkt\n" repo-name)
@@ -120,7 +123,7 @@ Examples:
 
   (define (run-freestyle repo-name goal)
     (define config-file
-      (build-path (find-system-path 'orig-dir)
+      (build-path ruyi-dir
                   "configs" (string-append repo-name ".rkt")))
     (unless (file-exists? config-file)
       (eprintf "No config found: configs/~a.rkt\n" repo-name)
@@ -134,7 +137,7 @@ Examples:
 
   (define (load-repo-config repo-name)
     (define config-file
-      (build-path (find-system-path 'orig-dir)
+      (build-path ruyi-dir
                   "configs" (string-append repo-name ".rkt")))
     (unless (file-exists? config-file)
       (eprintf "No config found: configs/~a.rkt\n" repo-name)
