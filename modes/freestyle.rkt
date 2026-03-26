@@ -71,10 +71,19 @@
             (string-append ctx "\n\n## " cf "\n\n" (file->string full-path))
             ctx)))
 
+    (define user-ctx
+      (if (hash-has-key? (task-extra tsk) 'user-context)
+          (hash-ref (task-extra tsk) 'user-context)
+          ""))
+
     (string-append
      "You are implementing one step of a larger goal.\n\n"
      "## Overall goal\n\n" full-overview "\n\n"
      "## This step\n\n" subtask-goal "\n\n"
+     (if (string=? user-ctx "")
+         ""
+         (string-append "## User feedback from previous iterations\n\n"
+                        user-ctx "\n\n"))
      "## Rules\n\n"
      "- Read the relevant source files before making changes.\n"
      "- Write or update tests for any code you change.\n"

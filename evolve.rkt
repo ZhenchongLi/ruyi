@@ -88,9 +88,9 @@ Examples:
     (define repo (load-local-config dir))
     (define fm (make-freestyle-mode goal
                  #:repo-path (repo-config-path repo)
-                 #:clarify? #f))
+                 #:clarify? #t))
     (define-values (branch kept pr-url)
-      (evolution-loop/worktree repo fm))
+      (evolution-loop/worktree repo fm #:interactive? #t))
     (printf "\nDone: ~a (kept ~a)\n" branch kept)
     (when pr-url (printf "PR: ~a\n" pr-url))
     (save-mode! dir goal kept))

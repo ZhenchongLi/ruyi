@@ -254,7 +254,8 @@
 (define worktree-setup-lock (make-semaphore 1))
 
 (define (evolution-loop/worktree repo mode-obj
-                                  #:auto-merge? [auto-merge? #t])
+                                  #:auto-merge? [auto-merge? #t]
+                                  #:interactive? [interactive? #f])
   "Run evolution in an isolated git worktree. Creates branch in main repo,
    sets up worktree, runs the loop there, pushes + creates PR, cleans up.
    Returns (values branch kept-count pr-url-or-#f)."
@@ -278,6 +279,7 @@
   (define kept-tasks '())
   (define discarded-count 0)
   (define pr-url #f)
+  (define extra-context "")
 
   (with-handlers
     ([exn:fail?
@@ -314,7 +316,18 @@
            [else
             (printf "[~a][~a/~a] ~a\n" branch i (repo-config-max-iterations wt-repo)
                     (task-description tsk))
-            (define result (execute-one-iteration wt-repo mode-obj tsk))
+            ;; Inject accumulated user feedback into task
+            (define tsk*
+              (if (string=? extra-context "")
+                  tsk
+                  (task (task-source-file tsk)
+                        (task-description tsk)
+                        (task-priority tsk)
+                        (if (task-extra tsk)
+                            (hash-set (task-extra tsk) 'user-context extra-context)
+                            (make-immutable-hash
+                             (list (cons 'user-context extra-context)))))))
+            (define result (execute-one-iteration wt-repo mode-obj tsk*))
             (log-iteration! wt-repo (mode-name mode-obj) tsk result)
             (printf "[~a]   ~a ~a\n" branch
                     (if (eq? (iteration-result-status result) 'keep) "+" "-")
@@ -323,6 +336,18 @@
               (set! kept-tasks (cons tsk kept-tasks)))
             (when (eq? (iteration-result-status result) 'discard)
               (set! discarded-count (add1 discarded-count)))
+
+            ;; Interactive: let user add input for next iteration
+            (define user-note
+              (if interactive?
+                  (let ([input (read-line-interactive
+                                "[Enter = continue, or type feedback] > ")])
+                    (if (string=? input "") #f input))
+                  #f))
+            (when user-note
+              (set! extra-context
+                (string-append extra-context "\n\nUser feedback: " user-note)))
+
             (loop (add1 i)
                   (if (eq? (iteration-result-status result) 'discard)
                       (add1 consecutive-fails)
