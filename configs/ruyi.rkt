@@ -27,5 +27,5 @@
    '()                                             ; context-files
    "evolution-log.tsv"                             ; log-path
    20                                              ; max-iterations
-   3                                               ; max-consecutive-fails
+   10                                              ; max-consecutive-fails
    500))                                           ; max-diff-lines

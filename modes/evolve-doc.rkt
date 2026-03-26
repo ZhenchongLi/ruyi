@@ -6,8 +6,8 @@
 ;; ============================================================
 ;; Evolve-doc mode: iteratively improve documents using Judge
 ;;
-;; Unlike other modes (which validate with build+test),
-;; this mode validates with LLM-as-Judge scoring.
+;; Key design: each iteration receives the previous round's
+;; Judge feedback, so Claude can fix specific weaknesses.
 ;; ============================================================
 
 (define README-RUBRIC
@@ -43,51 +43,74 @@ Dimensions (weight):
 The target audience is developers who use AI coding tools (Claude Code, Cursor, Copilot).
 They are technical, skeptical, and time-poor.")
 
-(define (evolve-doc-select-task repo done-tasks)
-  "Select the next document to evolve."
-  (define repo-path (repo-config-path repo))
-  ;; Priority: README first, then other docs
-  (define candidates
-    (filter (lambda (f) (not (member f (map task-source-file done-tasks))))
-            (filter file-exists?
-                    (list (build-path repo-path "README.md")))))
+;; Mutable state: last round's feedback (shared across iterations)
+(define last-weaknesses (make-parameter '()))
+(define last-feedback (make-parameter ""))
+(define last-score (make-parameter 0))
 
-  (if (empty? candidates)
-      #f
-      (task (path->string (first candidates))
-            "Evolve README.md"
+(define (evolve-doc-set-feedback! score weaknesses feedback)
+  "Called by engine after Judge evaluation to pass feedback to next round."
+  (last-score score)
+  (last-weaknesses weaknesses)
+  (last-feedback feedback))
+
+(define (evolve-doc-select-task repo done-tasks)
+  "Always return README as the task (we keep improving the same file)."
+  (define repo-path (repo-config-path repo))
+  (define readme (build-path repo-path "README.md"))
+  (if (file-exists? readme)
+      (task (path->string readme)
+            (format "Evolve README.md (prev score: ~a)" (last-score))
             1
             (make-immutable-hash
              (list (cons 'rubric README-RUBRIC)
-                   (cons 'min-score 8.0))))))
+                   (cons 'min-score 7.5)
+                   (cons 'set-feedback! evolve-doc-set-feedback!))))
+      #f))
 
 (define (evolve-doc-build-prompt repo tsk)
-  "Build prompt for Claude to improve a document."
+  "Build prompt with previous round's feedback included."
   (define file-path (task-source-file tsk))
   (define current-content
     (if (file-exists? file-path) (file->string file-path) ""))
   (define rubric (hash-ref (task-extra tsk) 'rubric))
 
+  ;; Build feedback section from previous round
+  (define prev-feedback
+    (if (empty? (last-weaknesses))
+        ""
+        (string-append
+         "## CRITICAL: Previous round's Judge feedback\n\n"
+         "Last score: " (number->string (last-score)) "/10\n\n"
+         "Weaknesses the Judge identified (FIX THESE):\n"
+         (string-join (map (lambda (w) (string-append "- " w)) (last-weaknesses)) "\n")
+         "\n\n"
+         "Judge's improvement suggestions:\n"
+         (last-feedback)
+         "\n\n"
+         "You MUST address these specific weaknesses. Do not ignore them.\n\n")))
+
   (string-append
    "You are improving a README.md for an open-source project.\n\n"
+   prev-feedback
    "## Current README\n\n" current-content "\n\n"
    "## Quality rubric (what the judge will score you on)\n\n" rubric "\n\n"
    "## Project context\n\n"
-   "Ruyi is a Racket-based evolution engine that uses a deterministic outer loop\n"
-   "(select task, validate, git commit/revert) with Claude Code as the creative\n"
-   "inner step. It can improve any codebase autonomously.\n\n"
-   "Key selling points:\n"
-   "- Works on ANY project (auto-detects language, build tool, test framework)\n"
+   "Ruyi is an evolution engine that improves codebases autonomously.\n"
+   "It uses a deterministic loop (Racket) for safety, and Claude Code for creativity.\n\n"
+   "Key facts:\n"
+   "- Works on ANY project — auto-detects language (TypeScript, Python, C#, Rust, Go)\n"
    "- Zero config: 'ruyi init' asks what you want, generates everything\n"
-   "- Deterministic safety: Racket code guarantees revert on failure\n"
-   "- Self-evolving: ruyi evolved its own test suite and this README\n\n"
+   "- Safe: always works on a branch, auto-reverts on failure\n"
+   "- Self-evolving: ruyi evolved its own README using LLM-as-Judge\n"
+   "- Requires: Racket + Claude Code CLI\n"
+   "- GitHub: https://github.com/ZhenchongLi/ruyi\n\n"
    "## Your task\n\n"
-   "Rewrite the README to score higher on the rubric. Focus on:\n"
-   "1. A compelling hook in the first 2 lines\n"
-   "2. 3-command quick start that anyone can copy-paste\n"
-   "3. A mermaid diagram showing the loop\n"
-   "4. Real output example (what it looks like when running)\n\n"
-   "Output the complete new README.md content. Nothing else.\n"))
+   "Rewrite the README to maximize the rubric score.\n"
+   (if (not (empty? (last-weaknesses)))
+       "PRIORITY: Fix the weaknesses from the previous round's feedback above.\n"
+       "")
+   "\nOutput the complete new README.md content. Nothing else — no explanation, no markdown fences around it.\n"))
 
 (define evolve-doc-mode
   (mode 'evolve-doc

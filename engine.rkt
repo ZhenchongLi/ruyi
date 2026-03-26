@@ -77,12 +77,14 @@
                   (if (eq? (iteration-result-status result) 'keep) "+" "-")
                   (iteration-result-detail result))
 
-          ;; Continue
+          ;; Continue — only add to done if kept (so discarded docs can retry)
           (loop (add1 i)
                 (if (eq? (iteration-result-status result) 'discard)
                     (add1 consecutive-fails)
                     0)
-                (cons tsk done))])])))
+                (if (eq? (iteration-result-status result) 'keep)
+                    (cons tsk done)
+                    done))])])))
 
 ;; ============================================================
 ;; Single iteration execution
@@ -131,11 +133,15 @@
       [has-rubric?
        (define rubric (hash-ref (task-extra tsk) 'rubric))
        (define min-score (hash-ref (task-extra tsk) 'min-score 7.0))
+       (define set-feedback!
+         (hash-ref (task-extra tsk) 'set-feedback! (lambda (s w f) (void))))
        (define file-path (task-source-file tsk))
        (define content
          (if (file-exists? file-path) (file->string file-path) ""))
        (define-values (score weaknesses feedback)
          (judge-evaluate (repo-config-path repo) rubric content))
+       ;; Always pass feedback to next round (whether keep or discard)
+       (set-feedback! score weaknesses feedback)
        (cond
          [(>= score min-score)
           (define hash (git-commit! repo mode-obj tsk))
