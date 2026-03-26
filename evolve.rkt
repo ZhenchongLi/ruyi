@@ -3,6 +3,7 @@
 (module+ main
   (require racket/cmdline racket/string racket/format racket/path racket/file racket/list
            racket/runtime-path)
+  (require racket/file)
   (require "config.rkt" "engine.rkt" "init.rkt" "git.rkt" "claude.rkt"
            "modes/freestyle.rkt")
 
@@ -145,7 +146,17 @@ Examples:
          [else
           ;; All args are the goal
           (string-join rest " ")]))
-     (run-local-do dir goal)]
+     ;; Support @file: read goal from file
+     (define final-goal
+       (if (string-prefix? goal "@")
+           (let ([fpath (substring goal 1)])
+             (unless (file-exists? fpath)
+               (eprintf "File not found: ~a\n" fpath)
+               (exit 1))
+             (printf "Reading goal from: ~a\n" fpath)
+             (file->string fpath))
+           goal))
+     (run-local-do dir final-goal)]
 
     ;; ruyi pdo <goal1> // <goal2> // ...
     [(and (>= (length args) 2) (string=? (first args) "pdo"))
