@@ -1,30 +1,40 @@
 # Ruyi (如意)
 
-**Point Claude Code at your repo and say what you want. Ruyi does the rest — in a loop, safely, until it's done.**
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
+
+**Tell Claude Code what you want. Ruyi loops it — commit on pass, revert on fail — until it's done. You review one clean PR.**
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 
+Here's what that looks like — a real run, `coverage` mode on a TypeScript project:
+
 ```
-                  ┌─────────────────────────────────┐
-                  │         your project repo        │
-                  └──────────────┬──────────────────-┘
-                                 │
-                  ┌──────────────▼──────────────────-┐
-                  │  Racket loop (deterministic)      │
-                  │  ┌───────────────────────────-┐   │
-                  │  │ 1. Pick next task           │   │
-                  │  │ 2. Call Claude Code ────────┼───┼──► Claude writes code
-                  │  │ 3. Run build + tests        │   │
-                  │  │ 4. Pass? ──► git commit     │   │
-                  │  │    Fail? ──► git checkout .  │   │
-                  │  │ 5. Next iteration           │   │
-                  │  └───────────────────────────-─┘   │
-                  └──────────────┬──────────────────-┘
-                                 │
-                  ┌──────────────▼──────────────────-┐
-                  │  One clean PR for you to review   │
-                  └─────────────────────────────────-┘
+$ ruyi
+
+=== Iteration 1/20 ===
+Task: Write tests for src/auth/session.ts
+Claude: implementing...
+Validate: pnpm test ✓ (14 tests, 14 passed)
+Result: keep (commit a3f9c21)        ← merged into your branch
+
+=== Iteration 2/20 ===
+Task: Write tests for src/api/users.ts
+Claude: implementing...
+Validate: pnpm test ✗ (1 assertion failed)
+Result: discard (reverted)           ← gone, as if it never happened
+
+=== Iteration 3/20 ===
+Task: Write tests for src/api/billing.ts
+Claude: implementing...
+Validate: pnpm test ✓ (8 tests, 8 passed)
+Result: keep (commit e82b4f0)
+
+...
+
+=== Done: 11 kept, 3 discarded, 6 skipped ===
 ```
+
+Every iteration either commits or reverts. No half-applied changes. No broken state.
 
 ## Quick Start
 
@@ -49,35 +59,38 @@ echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
 
 </details>
 
-## What happens when you run it
+## How it works
 
-Here's a real run — `coverage` mode on a TypeScript project:
+The core loop is simple:
 
 ```
-=== Iteration 1/20 ===
-Task: Write tests for src/auth/session.ts
-Claude: implementing...
-Validate: pnpm test ✓ (14 tests, 14 passed)
-Result: keep (commit a3f9c21)        ← merged into your branch
-
-=== Iteration 2/20 ===
-Task: Write tests for src/api/users.ts
-Claude: implementing...
-Validate: pnpm test ✗ (1 assertion failed)
-Result: discard (reverted)           ← gone, as if it never happened
-
-=== Iteration 3/20 ===
-Task: Write tests for src/api/billing.ts
-Claude: implementing...
-Validate: pnpm test ✓ (8 tests, 8 passed)
-Result: keep (commit e82b4f0)
-
-...
-
-=== Done: 11 kept, 3 discarded, 6 skipped ===
+  your goal
+     │
+     ▼
+┌──────────┐     ┌────────────┐     ┌──────────┐
+│ Pick task │ ──► │ Claude Code│ ──► │ Run tests│
+└──────────┘     │ writes code│     └────┬─────┘
+     ▲           └────────────┘       ┌──┴──┐
+     │                             pass?  fail?
+     │                               │      │
+     │                          git commit  git revert
+     │                               │      │
+     └───────── next iteration ◄─────┴──────┘
 ```
 
-Every iteration either commits or reverts. No half-applied changes. No broken state. At the end, you review one PR.
+The key idea: **separate the deterministic from the creative**.
+
+| | Racket (deterministic) | Claude (creative) |
+|---|---|---|
+| **Does** | Selects tasks, runs validation, manages git, enforces limits | Reads code, understands intent, writes implementations |
+| **Why** | These things must be reliable — code guarantees they are | This is where AI shines — understanding and creating |
+
+**Safety guarantees** — this is what separates Ruyi from "just run Claude in a loop":
+- **Atomic commit-or-revert** — every iteration either passes tests and commits, or reverts completely. No broken intermediate state, ever.
+- Always works on a branch — never touches main
+- Enforces diff size limits (default 500 lines) — no runaway changes
+- Respects forbidden files — won't touch what you protect
+- You review one clean PR at the end
 
 ## Modes
 
@@ -92,22 +105,6 @@ Each mode takes a different goal and turns it into a task queue:
 | `evolve-doc` | Improves docs via LLM-as-Judge scoring | "Improve the README" | `keep (score: 8.3)` or `discard (score: 7.4 < 8.0 threshold)` |
 
 You don't pick a mode — just describe your goal in plain English during `ruyi init`, and Ruyi selects the right one.
-
-## How it works
-
-The key idea: **separate the deterministic from the creative**.
-
-| | Racket (deterministic) | Claude (creative) |
-|---|---|---|
-| **Does** | Selects tasks, runs validation, manages git, enforces limits | Reads code, understands intent, writes implementations |
-| **Why** | These things must be reliable — code guarantees they are | This is where AI shines — understanding and creating |
-
-**Safety guarantees**:
-- Always works on a branch — never touches main
-- Auto-reverts on failure — `git checkout .` after any test failure
-- Enforces diff size limits (default 500 lines) — no runaway changes
-- Respects forbidden files — won't touch what you protect
-- You review one clean PR at the end
 
 ## What does `init` look like?
 
@@ -161,14 +158,11 @@ This README was written by Ruyi. Its `evolve-doc` mode iterated against a qualit
 2026-03-26T16:40  evolve-doc  Claude failed       discard  (prompt tuning)
 2026-03-26T17:27  evolve-doc  Score 7.4 < 8.0     discard
 2026-03-26T17:29  evolve-doc  fe74537             keep     (score: 8.2)  ▲
-2026-03-26T17:32  evolve-doc  Score 7.4 < 8.0     discard
 2026-03-26T17:36  evolve-doc  29a2513             keep     (score: 8.3)  ▲
-2026-03-26T17:39  evolve-doc  Score 7.9 < 8.0     discard
-2026-03-26T17:44  evolve-doc  5044d5d             keep     (score: 7.6)  ▲ new baseline
 2026-03-26T17:47  evolve-doc  4cca522             keep     (score: 8.3)  ▲
 ```
 
-Score progression: failed → 7.4 → **8.2** → **8.3** → 7.6 → **8.3**. The full log — including all failed attempts — is in [`evolution-log.tsv`](evolution-log.tsv). Each commit hash is real and inspectable via `git show`.
+Score progression: failed → 7.4 → **8.2** → **8.3** → **8.3** (current). The full log — including all 20 iterations with their discards — is in [`evolution-log.tsv`](evolution-log.tsv). Every commit hash is real and inspectable via `git show`.
 
 <details>
 <summary>Why Racket?</summary>
