@@ -221,16 +221,22 @@
      (string-join conversation-history "\n") "\n\n"
      "Break this into small, independent subtasks that can be implemented one at a time.\n"
      "Each subtask should be completable in a single commit.\n\n"
-     "Format:\n"
-     "VALIDATE: yes or no (should build/test be run after each subtask? "
-     "Say 'yes' for code changes, 'no' for docs/config/non-code tasks)\n"
-     "MAX_REVISIONS: <number> (how many review-revise rounds per subtask, 1-5, default 2)\n\n"
+     "Format (output each on its own line, then subtasks):\n\n"
+     "VALIDATE: yes or no (build/test after each subtask? yes for code, no for docs)\n"
+     "MAX_REVISIONS: <1-5> (review-revise rounds per subtask, default 2)\n"
+     "MIN_SCORE: <1-10> (minimum reviewer score to approve, default 8)\n"
+     "MAX_DIFF: <number> (max diff lines per subtask, default 500)\n"
+     "REVIEWER_MODEL: sonnet or opus (which model reviews, default sonnet)\n"
+     "AUTO_MERGE: yes or no (auto-merge PR when done, default yes)\n"
+     "FORBIDDEN: file1, file2, ... (files not to touch, or 'none')\n"
+     "CONTEXT: file1, file2, ... (reference files to read, or 'none')\n\n"
      "OVERVIEW: one sentence summary of the full goal\n\n"
      "SUBTASK 1: <precise description of what to do>\n"
      "SUBTASK 2: <precise description of what to do>\n"
      "SUBTASK 3: ...\n\n"
-     "Keep subtasks small. 3-7 subtasks is ideal. Order them by dependency (do first things first).\n"
-     "Output only VALIDATE, MAX_REVISIONS, OVERVIEW, and SUBTASKs, nothing else."))
+     "Keep subtasks small. 3-7 subtasks is ideal. Order them by dependency.\n"
+     "Only output the parameters, OVERVIEW, and SUBTASKs. "
+     "Respect the user's explicit preferences when they specify constraints."))
 
   (define-values (s-ok? spec)
     (claude-execute repo-path spec-prompt #:model "opus" #:timeout 120))

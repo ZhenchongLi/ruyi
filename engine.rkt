@@ -169,12 +169,6 @@
 
 (define DEFAULT-MAX-REVISIONS 2)
 
-(define (task-max-revisions tsk)
-  "Get max-revisions from task extra, or default."
-  (if (and (task-extra tsk) (hash-has-key? (task-extra tsk) 'max-revisions))
-      (hash-ref (task-extra tsk) 'max-revisions)
-      DEFAULT-MAX-REVISIONS))
-
 (define (inject-feedback tsk feedback)
   "Add reviewer feedback to task's extra hash."
   (if (string=? feedback "")
@@ -187,9 +181,20 @@
                 (make-immutable-hash
                  (list (cons 'reviewer-feedback feedback)))))))
 
+(define (task-param tsk key default)
+  "Get a parameter from task extra, or return default."
+  (if (and (task-extra tsk) (hash-has-key? (task-extra tsk) key))
+      (hash-ref (task-extra tsk) key)
+      default))
+
 (define (execute-one-iteration repo mode-obj tsk)
-  "Implement → Review → Decide. Revise up to max-revisions times."
-  (define max-revs (task-max-revisions tsk))
+  "Implement → Review → Decide. All parameters from task spec."
+  (define max-revs     (task-param tsk 'max-revisions 2))
+  (define min-score    (task-param tsk 'min-score 8))
+  (define max-diff     (task-param tsk 'max-diff 500))
+  (define rev-model    (task-param tsk 'reviewer-model "sonnet"))
+  (define skip-valid?  (task-param tsk 'skip-validation #f))
+
   (with-handlers
     ([exn:fail?
       (lambda (e)
@@ -221,20 +226,14 @@
 
       (define diff-lines (git-diff-line-count repo))
       (printf "  Diff: ~a lines\n" diff-lines)
-      (when (> diff-lines (repo-config-max-diff-lines repo))
+      (when (> diff-lines max-diff)
         (git-revert! repo)
         (raise (make-exn:fail
-                (format "Diff too large: ~a > ~a"
-                        diff-lines (repo-config-max-diff-lines repo))
+                (format "Diff too large: ~a > ~a" diff-lines max-diff)
                 (current-continuation-marks))))
 
-      ;; 4. Optional build/test validation (if configured and not skipped)
-      (define skip-validation?
-        (and (task-extra tsk)
-             (hash-has-key? (task-extra tsk) 'skip-validation)
-             (hash-ref (task-extra tsk) 'skip-validation)))
-
-      (unless skip-validation?
+      ;; 4. Optional build/test validation
+      (unless skip-valid?
         (define validation (run-validation-gate repo))
         (unless (validation-result-passed? validation)
           (git-revert! repo)
@@ -250,29 +249,32 @@
       (define-values (score issues suggestions)
         (review-changes (repo-config-path repo)
                         (task-description tsk)
-                        diff-text))
+                        diff-text
+                        #:model rev-model))
 
-      ;; 6. Ruyi decides (hardcoded thresholds)
+      ;; 6. Ruyi decides (thresholds from task spec)
+      (define revise-threshold (max 1 (- min-score 2)))  ; e.g. min-score 8 → revise at 6+
+
       (cond
-        ;; Approved: score >= 8
-        [(>= score 8)
+        ;; Approved
+        [(>= score min-score)
          (define hash (git-commit! repo mode-obj tsk))
          (iteration-result 'keep (format "~a (score: ~a)" hash score))]
 
-        ;; Needs revision: score 6-7, attempts left
-        [(and (>= score 6) (< attempt max-revs))
-         (printf "  Score ~a — revising...\n" score)
+        ;; Needs revision
+        [(and (>= score revise-threshold) (< attempt max-revs))
+         (printf "  Score ~a < ~a — revising...\n" score min-score)
          (git-revert! repo)
          (define reformulated (format-feedback-for-implementer issues suggestions))
          (revise-loop (add1 attempt) reformulated)]
 
-        ;; Max attempts reached with decent score: commit best effort
-        [(and (>= score 6) (>= attempt max-revs))
+        ;; Max attempts, decent score: best effort
+        [(and (>= score revise-threshold) (>= attempt max-revs))
          (printf "  Score ~a — max revisions, committing best effort\n" score)
          (define hash (git-commit! repo mode-obj tsk))
          (iteration-result 'keep (format "~a (score: ~a, best-effort)" hash score))]
 
-        ;; Rejected: score < 6
+        ;; Rejected
         [else
          (printf "  Score ~a — rejected\n" score)
          (git-revert! repo)
