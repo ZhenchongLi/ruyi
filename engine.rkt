@@ -200,11 +200,20 @@
                       diff-lines (repo-config-max-diff-lines repo))
               (current-continuation-marks))))
 
-    ;; 4. Validate — either Judge or build+test
+    ;; 4. Validate — skip, Judge, or build+test
+    (define skip-validation?
+      (and (task-extra tsk)
+           (hash-has-key? (task-extra tsk) 'skip-validation)
+           (hash-ref (task-extra tsk) 'skip-validation)))
     (define has-rubric?
       (and (task-extra tsk) (hash-has-key? (task-extra tsk) 'rubric)))
 
     (cond
+      ;; Skip validation (agent decided it's not needed)
+      [skip-validation?
+       (define hash (git-commit! repo mode-obj tsk))
+       (iteration-result 'keep hash)]
+
       ;; Judge mode: score with LLM
       [has-rubric?
        (define rubric (hash-ref (task-extra tsk) 'rubric))
@@ -286,14 +295,18 @@
       (lambda (e)
         (printf "[worktree] Error in ~a: ~a\n" branch (exn-message e)))])
 
-    ;; Validate baseline in worktree
-    (printf "[~a] Baseline validation:\n" branch)
-    (define baseline (run-validation-gate wt-repo))
-    (unless (validation-result-passed? baseline)
-      (error 'evolution-loop/worktree
-             "Repo is not green! Failed: ~a"
-             (validation-result-failed-step baseline)))
-    (printf "[~a] Baseline: PASSED\n" branch)
+    ;; Validate baseline in worktree (skip if no validate-commands)
+    (cond
+      [(null? (repo-config-validate-commands wt-repo))
+       (printf "[~a] Baseline: skipped (no validate commands)\n" branch)]
+      [else
+       (printf "[~a] Baseline validation:\n" branch)
+       (define baseline (run-validation-gate wt-repo))
+       (unless (validation-result-passed? baseline)
+         (error 'evolution-loop/worktree
+                "Repo is not green! Failed: ~a"
+                (validation-result-failed-step baseline)))
+       (printf "[~a] Baseline: PASSED\n" branch)])
 
     ;; Init log + journal
     (log-init! wt-repo)

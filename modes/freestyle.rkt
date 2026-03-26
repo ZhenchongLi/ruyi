@@ -28,6 +28,13 @@
     (define m (regexp-match #rx"^OVERVIEW[.:] *(.*)" trimmed))
     (and m (second m))))
 
+(define (parse-validate spec)
+  "Extract VALIDATE line. Returns #t if yes or missing, #f if no."
+  (define m (regexp-match #rx"(?i:VALIDATE[.:]\\s*(yes|no))" spec))
+  (if m
+      (string=? (string-downcase (second m)) "yes")
+      #t))  ; default: validate
+
 (define (make-freestyle-mode initial-goal #:clarify? [clarify? #t] #:repo-path [repo-path #f])
   "Create a freestyle mode. If clarify? is #t, runs interactive Q&A first."
   (define refined-spec
@@ -37,9 +44,11 @@
 
   (define subtasks (parse-subtasks refined-spec))
   (define overview (or (parse-overview refined-spec) initial-goal))
+  (define needs-validation? (parse-validate refined-spec))
   (define remaining-tasks (box subtasks))
 
   (printf "\nGoal: ~a\n" overview)
+  (printf "Validate: ~a\n" (if needs-validation? "yes" "no"))
   (printf "Subtasks: ~a\n\n" (length subtasks))
   (for ([st (in-list subtasks)] [i (in-naturals 1)])
     (printf "  ~a. ~a\n" i st))
@@ -58,7 +67,8 @@
                 1
                 (make-immutable-hash
                  (list (cons 'goal next-task)
-                       (cons 'overview overview)))))))
+                       (cons 'overview overview)
+                       (cons 'skip-validation (not needs-validation?))))))))
 
   (define (freestyle-build-prompt repo tsk)
     (define subtask-goal (hash-ref (task-extra tsk) 'goal))
