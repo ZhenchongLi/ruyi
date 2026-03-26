@@ -47,12 +47,17 @@ They are technical, skeptical, and time-poor.")
 (define last-weaknesses (make-parameter '()))
 (define last-feedback (make-parameter ""))
 (define last-score (make-parameter 0))
+(define human-input (make-parameter ""))
 
 (define (evolve-doc-set-feedback! score weaknesses feedback)
   "Called by engine after Judge evaluation to pass feedback to next round."
   (last-score score)
   (last-weaknesses weaknesses)
   (last-feedback feedback))
+
+(define (evolve-doc-set-human-input! input)
+  "Called by engine to pass user's interactive feedback."
+  (human-input input))
 
 (define (evolve-doc-select-task repo done-tasks)
   "Always return README as the task (we keep improving the same file)."
@@ -65,7 +70,8 @@ They are technical, skeptical, and time-poor.")
             (make-immutable-hash
              (list (cons 'rubric README-RUBRIC)
                    (cons 'min-score 7.5)
-                   (cons 'set-feedback! evolve-doc-set-feedback!))))
+                   (cons 'set-feedback! evolve-doc-set-feedback!)
+                   (cons 'set-human-input! evolve-doc-set-human-input!))))
       #f))
 
 (define (evolve-doc-build-prompt repo tsk)
@@ -90,8 +96,18 @@ They are technical, skeptical, and time-poor.")
          "\n\n"
          "You MUST address these specific weaknesses. Do not ignore them.\n\n")))
 
+  ;; Build human input section
+  (define human-section
+    (if (string=? (human-input) "")
+        ""
+        (string-append
+         "## HIGHEST PRIORITY: Human feedback\n\n"
+         "The human just said: \"" (human-input) "\"\n"
+         "Address this FIRST before anything else.\n\n")))
+
   (string-append
    "You are improving a README.md for an open-source project.\n\n"
+   human-section
    prev-feedback
    "## Current README\n\n" current-content "\n\n"
    "## Quality rubric (what the judge will score you on)\n\n" rubric "\n\n"

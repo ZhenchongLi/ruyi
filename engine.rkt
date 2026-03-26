@@ -1,7 +1,10 @@
 #lang racket/base
-(require racket/format racket/list racket/string racket/file)
+(require racket/format racket/list racket/string racket/file racket/port)
 (require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt" "judge.rkt")
-(provide evolution-loop)
+(provide evolution-loop human-feedback)
+
+;; Global parameter: human feedback from last interactive prompt
+(define human-feedback (make-parameter ""))
 
 ;; ============================================================
 ;; Core evolution loop — deterministic backbone
@@ -38,7 +41,8 @@
   ;; Main loop
   (let loop ([i 1]
              [consecutive-fails 0]
-             [done '()])
+             [done '()]
+             [user-feedback ""])
 
     (cond
       ;; Termination: iteration limit
@@ -66,6 +70,11 @@
           (printf "\n[~a/~a] ~a\n" i (repo-config-max-iterations repo)
                   (task-description tsk))
 
+          ;; Pass human feedback to mode (if supported)
+          (when (and (task-extra tsk)
+                     (hash-has-key? (task-extra tsk) 'set-human-input!))
+            ((hash-ref (task-extra tsk) 'set-human-input!) user-feedback))
+
           ;; Step 2-4: Execute one iteration
           (define result (execute-one-iteration repo mode-obj tsk))
 
@@ -77,6 +86,21 @@
                   (if (eq? (iteration-result-status result) 'keep) "+" "-")
                   (iteration-result-detail result))
 
+          ;; Ask user for feedback (interactive)
+          (printf "\n  > ")
+          (flush-output)
+          (define input (read-line))
+          (define new-feedback
+            (cond
+              [(eof-object? input) ""]
+              [(string=? (string-trim input) "stop")
+               (printf "\nStopped by user.\n")
+               (print-summary done)
+               ;; Use exit to break out of the loop
+               (exit 0)]
+              [(string=? (string-trim input) "") ""]
+              [else (string-trim input)]))
+
           ;; Continue — only add to done if kept (so discarded docs can retry)
           (loop (add1 i)
                 (if (eq? (iteration-result-status result) 'discard)
@@ -84,7 +108,8 @@
                     0)
                 (if (eq? (iteration-result-status result) 'keep)
                     (cons tsk done)
-                    done))])])))
+                    done)
+                new-feedback)])])))
 
 ;; ============================================================
 ;; Single iteration execution
