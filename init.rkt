@@ -24,9 +24,7 @@
   (printf "Path:     ~a\n\n" (path->string path))
 
   (when (string=? (project-info-language info) "unknown")
-    (printf "Could not detect project type.\n")
-    (printf "Please make sure you're in a project directory.\n")
-    (exit 1))
+    (printf "No project type detected — running without build/test validation.\n"))
 
   ;; Ensure git
   (unless (directory-exists? (build-path path ".git"))
