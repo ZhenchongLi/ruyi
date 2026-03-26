@@ -6,7 +6,41 @@
 
 The control loop is deterministic Racket, not an LLM — safety guarantees are code, not prompts. ~2,000 lines you can [read yourself](engine.rkt).
 
-**Proof it works:** This README was evolved by Ruyi itself — [28 iterations](evolution-log.tsv), 14 kept, 14 discarded, 0 broken mains. Every kept version is [a real commit you can diff](https://github.com/ZhenchongLi/ruyi/commit/f98e0be).
+## How it works
+
+```
+                  ┌─────────────────┐
+                  │   ruyi init     │  You describe a goal in plain English
+                  └────────┬────────┘
+                           ▼
+              ┌────────────────────────┐
+              │  Pick next target      │  file, issue, or doc
+              │  (deterministic loop)  │◄─────────────────────┐
+              └────────────┬───────────┘                      │
+                           ▼                                  │
+              ┌────────────────────────┐                      │
+              │  Claude Code writes    │                      │
+              │  code / tests / docs   │                      │
+              └────────────┬───────────┘                      │
+                           ▼                                  │
+              ┌────────────────────────┐                      │
+              │  Run tests / build     │                      │
+              └──────┬─────────┬───────┘                      │
+                     │         │                              │
+                pass ▼         ▼ fail                         │
+          ┌──────────────┐ ┌──────────────┐                   │
+          │ git commit   │ │ git revert   │  branch unchanged │
+          │ (atomic)     │ │ (full reset) │                   │
+          └──────┬───────┘ └──────┬───────┘                   │
+                 │                │                           │
+                 └────────────────┴───────────────────────────┘
+                           ▼
+              ┌────────────────────────┐
+              │  One clean PR to review│
+              └────────────────────────┘
+```
+
+The Racket engine controls every step. Claude never decides whether to commit or revert — the loop does, based on your test suite. That's the safety guarantee.
 
 ## What a run looks like
 
@@ -59,36 +93,46 @@ a3f9c21 test(session): add 14 tests for src/auth/session.ts
 
 ## Quick Start
 
-**Install** ([read the script first](https://github.com/ZhenchongLi/ruyi/blob/main/install.sh) — it clones the repo, installs Racket if missing, adds a `ruyi` alias):
+**Install Racket + clone Ruyi (3 commands):**
+
+macOS:
+```bash
+brew install minimal-racket
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
+```
+
+<details>
+<summary>Linux (Ubuntu/Debian / Fedora)</summary>
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install racket
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.bashrc && source ~/.bashrc
+```
+
+**Fedora:**
+```bash
+sudo dnf install racket
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.bashrc && source ~/.bashrc
+```
+
+</details>
+
+<details>
+<summary>Prefer a one-liner? Install script</summary>
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
 ```
 
-The install script auto-detects your OS — works on macOS (Homebrew), Ubuntu/Debian (apt), and Fedora (dnf).
-
-<details>
-<summary>Prefer manual install? 3 commands:</summary>
-
-**macOS:**
-```bash
-brew install minimal-racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get install racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.bashrc
-```
-
-Open a new terminal (or `source` your shell rc) to pick up the alias.
+[Read the script first](https://github.com/ZhenchongLi/ruyi/blob/main/install.sh) — it does exactly the 3 steps above: installs Racket if missing, clones the repo, adds the alias. After running, `source` your shell rc or open a new terminal.
 
 </details>
 
-**Then — install to first output in 3 commands:**
+**Then — start evolving:**
 
 ```bash
 cd your-project          # any language, any framework
@@ -111,7 +155,7 @@ ruyi                     # start evolving
    Commit: 7d1a3f2 test(parse): add 6 tests
 ```
 
-That's it. Ruyi is running — each passing iteration commits, each failure reverts, and you review one PR when it's done.
+That's it. Each passing iteration commits, each failure reverts, and you review one PR when it's done.
 
 ## Modes
 
@@ -121,21 +165,22 @@ Describe your goal in plain English during `ruyi init` — Ruyi selects the righ
 |------|---------|-------------|
 | `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
 | `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
-| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
-| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring (this README was written this way) |
 | `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
 | `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
+| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
+| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring |
 
-## How it works
-
-Each iteration is atomic — **pass tests? `git commit`. Fail? `git revert`.** No broken intermediate state, ever.
+## The safety contract
 
 This is what separates Ruyi from "just run Claude in a loop":
-- **Atomic commit-or-revert** — every iteration either passes and commits, or reverts completely
-- Always works on a branch — never touches main
-- Enforces diff size limits (default 500 lines) — no runaway changes
-- Respects forbidden files — won't touch what you protect
-- You review one clean PR at the end
+
+- **Atomic commit-or-revert** — every iteration either passes and commits, or reverts completely. No broken intermediate state, ever.
+- **Branch isolation** — never touches main. You merge when you're ready.
+- **Diff size limits** (default 500 lines) — no runaway changes.
+- **Forbidden files** — won't touch what you protect.
+- **One clean PR** — you review a single diff at the end.
+
+All enforced by the [Racket engine](engine.rkt), not by prompts.
 
 ## What does `init` look like?
 
@@ -169,6 +214,14 @@ Ready! Run:
 
 Zero config files to write. Ruyi detects your language, build tool, and test framework automatically. Works with TypeScript, Python, C#/.NET, Rust, Go, and Racket — if it has a `package.json`, `pyproject.toml`, `Cargo.toml`, or equivalent, Ruyi picks it up.
 
+## Proof it works
+
+**On itself:** This README was evolved by Ruyi — [28 iterations](evolution-log.tsv), 14 kept, 14 discarded, 0 broken mains. Every kept version is [a real commit you can diff](https://github.com/ZhenchongLi/ruyi/commits/main/?search=evolve). The evolution log is checked into the repo — you can see exactly which iterations passed and which were reverted.
+
+**On the engine:** Ruyi's own test suite was bootstrapped by running `ruyi` in `coverage` mode on this repo. The commit history shows the loop in action — atomic commits, clean reverts, no manual intervention.
+
+The [commit history](https://github.com/ZhenchongLi/ruyi/commits/main/) is the proof. Every `evolve(...)` commit was made by Ruyi's loop. Every discarded iteration left no trace.
+
 <details>
 <summary>Why Racket?</summary>
 
@@ -181,9 +234,6 @@ The safety invariants (atomic commit-or-revert, diff size limits, forbidden file
 - [Claude Code](https://claude.ai/code) CLI installed and authenticated
 - Git
 - [Racket](https://racket-lang.org/) 9.0+ (installed automatically by `install.sh`)
-  - macOS: `brew install minimal-racket`
-  - Ubuntu/Debian: `sudo apt-get install racket`
-  - Fedora: `sudo dnf install racket`
 
 ## License
 

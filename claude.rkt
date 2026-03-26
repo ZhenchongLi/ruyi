@@ -76,15 +76,57 @@
      (values #f "TIMEOUT")]))
 
 (define (claude-implement repo mode-obj tsk)
-  "Call Claude to implement a task. Returns #t if Claude completed."
+  "Plan first, confirm, then implement."
   (define prompt ((mode-build-prompt mode-obj) repo tsk))
-  (printf "  Calling Claude... ")
+  (define repo-path (repo-config-path repo))
+
+  ;; Step 1: Ask Claude to output a plan (not implement yet)
+  (printf "  Planning... ")
   (flush-output)
-  (define-values (ok? output)
-    (claude-execute (repo-config-path repo) prompt))
-  (if ok?
-      (begin (printf "done\n") #t)
-      (begin (printf "failed\n") #f)))
+  (define plan-prompt
+    (string-append
+     prompt
+     "\n\n---\n"
+     "WAIT. Before implementing, first output a brief plan:\n"
+     "- What files you will create or modify\n"
+     "- What changes you will make (1-2 lines each)\n"
+     "- What tests you will add\n\n"
+     "Output ONLY the plan. Do NOT write any code yet. Start with 'Plan:'\n"))
+
+  (define-values (plan-ok? plan)
+    (claude-execute repo-path plan-prompt #:model "sonnet" #:timeout 60))
+
+  (cond
+    [(not plan-ok?)
+     (printf "failed\n")
+     #f]
+    [else
+     ;; Show plan and ask for confirmation
+     (printf "done\n\n")
+     (displayln (string-trim plan))
+     (printf "\n  Execute? (Enter = yes, 'skip' = next task, or type adjustments) > ")
+     (flush-output)
+     (define confirm (read-line))
+     (define trimmed (if (eof-object? confirm) "" (string-trim confirm)))
+
+     (cond
+       [(string=? trimmed "skip")
+        (printf "  Skipped.\n")
+        #f]
+       [else
+        ;; Step 2: Execute (with adjustments if any)
+        (define final-prompt
+          (if (string=? trimmed "")
+              prompt
+              (string-append prompt "\n\nAdditional instruction from user: " trimmed)))
+
+        (printf "  Implementing... ")
+        (flush-output)
+        (define-values (ok? output)
+          (claude-execute repo-path final-prompt))
+        (if ok?
+            (begin (printf "done\n") #t)
+            (begin (printf "failed\n") #f))])]))
 
 ;; ============================================================
 ;; Interactive Claude: clarify requirements before execution
