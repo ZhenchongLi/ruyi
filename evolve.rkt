@@ -194,22 +194,49 @@ Examples:
     ;; ruyi clean
     [(and (= (length args) 1) (string=? (first args) "clean"))
      (define dir (current-directory))
-     (ruyi-ensure-init! dir)
-     (define repo (load-local-config dir))
+     (define ruyi-files
+       (list ".ruyi.rkt" "evolution-log.tsv" "evolution-journal.md"))
+     (define ruyi-dirs
+       (list ".ruyi-modes"))
+     (define cleaned 0)
+
+     ;; Clean ruyi-generated files
+     (for ([f (in-list ruyi-files)])
+       (define p (build-path dir f))
+       (when (file-exists? p)
+         (delete-file p)
+         (printf "  Removed ~a\n" f)
+         (set! cleaned (add1 cleaned))))
+     (for ([d (in-list ruyi-dirs)])
+       (define p (build-path dir d))
+       (when (directory-exists? p)
+         (delete-directory/files p)
+         (printf "  Removed ~a/\n" d)
+         (set! cleaned (add1 cleaned))))
+
+     ;; Clean stale worktrees
      (define tmp (path->string (find-system-path 'temp-dir)))
      (define stale
        (for/list ([d (directory-list (string->path tmp))]
                   #:when (string-prefix? (path->string d) "ruyi-wt-"))
          (build-path tmp (path->string d))))
-     (cond
-       [(null? stale)
-        (printf "No stale worktrees found.\n")]
-       [else
-        (printf "Cleaning ~a stale worktree(s):\n" (length stale))
-        (for ([wt (in-list stale)])
-          (printf "  ~a\n" (path->string wt))
-          (git-worktree-remove! repo (path->string wt)))
-        (printf "Done.\n")])]
+     (when (not (null? stale))
+       (printf "  Cleaning ~a stale worktree(s)\n" (length stale))
+       ;; Try to prune worktrees if we have a git repo
+       (when (directory-exists? (build-path dir ".git"))
+         (with-handlers ([exn:fail? (lambda (_) (void))])
+           (define repo (load-local-config dir))
+           (for ([wt (in-list stale)])
+             (git-worktree-remove! repo (path->string wt)))))
+       ;; Force remove dirs if still there
+       (for ([wt (in-list stale)])
+         (when (directory-exists? wt)
+           (delete-directory/files wt)))
+       (set! cleaned (+ cleaned (length stale))))
+
+     (if (= cleaned 0)
+         (printf "Nothing to clean.\n")
+         (printf "Cleaned ~a item(s).\n" cleaned))]
 
     ;; Unknown
     [else

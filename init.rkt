@@ -26,12 +26,17 @@
   (when (string=? (project-info-language info) "unknown")
     (printf "No project type detected — running without build/test validation.\n"))
 
-  ;; Ensure git
+  ;; Ensure git — refuse to auto-init in large/system directories
   (unless (directory-exists? (build-path path ".git"))
+    (define file-count
+      (length (directory-list path)))
+    (when (> file-count 50)
+      (eprintf "Directory has ~a files — too many to auto-init git.\n" file-count)
+      (eprintf "Please run 'git init' manually, or use ruyi in a project directory.\n")
+      (exit 1))
     (printf "No git repo found. Initializing...\n")
     (parameterize ([current-directory path])
       (system "git init")
-      ;; Create initial commit (even if empty, use --allow-empty)
       (system "git add -A")
       (system "git commit --allow-empty -m 'initial commit'")))
 
