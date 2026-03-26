@@ -90,7 +90,7 @@ Examples:
                  #:repo-path (repo-config-path repo)
                  #:clarify? #t))
     (define-values (branch kept pr-url)
-      (evolution-loop/worktree repo fm #:interactive? #t))
+      (evolution-loop/worktree repo fm))
     (printf "\nDone: ~a (kept ~a)\n" branch kept)
     (when pr-url (printf "PR: ~a\n" pr-url))
     (save-mode! dir goal kept))
