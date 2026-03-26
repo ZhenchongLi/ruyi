@@ -1,5 +1,5 @@
 #lang racket/base
-(require racket/string racket/port racket/system racket/format)
+(require racket/string racket/port racket/system racket/format racket/file)
 (require "config.rkt")
 (provide (all-defined-out))
 
@@ -17,46 +17,62 @@
 (define (claude-execute repo-path prompt
                         #:model [model DEFAULT-MODEL]
                         #:timeout [timeout CLAUDE-TIMEOUT])
-  "Call claude -p with a prompt, return (values success? output)."
+  "Call claude -p with prompt via temp files, return (values success? output)."
+
+  ;; Write prompt to temp file (avoids shell arg length limits)
+  (define tmp-prompt (make-temporary-file "ruyi-prompt-~a.txt"))
+  (define tmp-output (make-temporary-file "ruyi-output-~a.txt"))
+  (define tmp-err (make-temporary-file "ruyi-err-~a.txt"))
+  (call-with-output-file tmp-prompt
+    (lambda (out) (display prompt out))
+    #:exists 'replace)
+
+  ;; Forward proxy env vars from parent process
+  (define proxy-env
+    (string-join
+     (filter (lambda (s) (not (string=? s "")))
+             (map (lambda (v)
+                    (define val (getenv v))
+                    (if val (format "export ~a='~a';" v val) ""))
+                  '("https_proxy" "http_proxy" "all_proxy"
+                    "HTTPS_PROXY" "HTTP_PROXY" "ALL_PROXY")))
+     " "))
+
   (define cmd
-    (format "cd ~a && ~a -p --dangerously-skip-permissions --model ~a ~a"
+    (format "~a cd ~a && ~a -p --dangerously-skip-permissions --model ~a < ~a > ~a 2> ~a"
+            proxy-env
             (path->string repo-path)
             (path->string CLAUDE-PATH)
             model
-            (shell-quote prompt)))
+            (path->string tmp-prompt)
+            (path->string tmp-output)
+            (path->string tmp-err)))
 
-  ;; Use process/ports for timeout control
-  (define-values (proc stdout-in stdin-out stderr-in)
-    (subprocess #f #f #f
-                "/bin/bash" "-c" cmd))
-
-  ;; Read output with timeout
-  (define output-channel (make-channel))
-  (define reader-thread
+  ;; Run with timeout
+  (define done-channel (make-channel))
+  (define worker
     (thread
      (lambda ()
-       (define out (port->string stdout-in))
-       (define err (port->string stderr-in))
-       (close-input-port stdout-in)
-       (close-input-port stderr-in)
-       (channel-put output-channel (cons out err)))))
+       (define exit-code
+         (parameterize ([current-directory repo-path])
+           (system/exit-code (format "/bin/bash -c ~a" (shell-quote cmd)))))
+       (channel-put done-channel exit-code))))
 
-  ;; Wait with timeout
-  (define result
-    (sync/timeout timeout
-                  (handle-evt (thread-dead-evt reader-thread)
-                              (lambda (_)
-                                (channel-get output-channel)))))
+  (define result (sync/timeout timeout done-channel))
+
+  ;; Read output
+  (define output
+    (if (file-exists? tmp-output) (file->string tmp-output) ""))
+
+  ;; Cleanup
+  (for ([f (list tmp-prompt tmp-output tmp-err)])
+    (with-handlers ([exn:fail? (lambda (_) (void))])
+      (delete-file f)))
 
   (cond
-    [result
-     (subprocess-wait proc)
-     (define exit-code (subprocess-status proc))
-     (values (zero? exit-code) (car result))]
+    [result (values (zero? result) output)]
     [else
-     ;; Timeout
-     (subprocess-kill proc #t)
-     (kill-thread reader-thread)
+     (kill-thread worker)
      (values #f "TIMEOUT")]))
 
 (define (claude-implement repo mode-obj tsk)
