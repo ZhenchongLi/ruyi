@@ -138,50 +138,72 @@
 
 (define (claude-clarify repo-path initial-goal)
   "Use Claude interactively to clarify a vague goal into a precise spec.
-   Returns a detailed task description string."
+   Multi-round: Claude decides when it has enough info to proceed."
   (printf "\nClarifying your goal with Claude...\n\n")
 
-  ;; Step 1: Ask Claude to generate clarifying questions
-  (define question-prompt
-    (string-append
-     "A user wants to make a change to their project. Their goal is:\n\n"
-     "\"" initial-goal "\"\n\n"
-     "Ask 2-3 short clarifying questions to understand exactly what they need.\n"
-     "Format: one question per line, numbered.\n"
-     "Only output the questions, nothing else."))
+  ;; Multi-round conversation loop
+  (define conversation-history
+    (list (string-append "User's goal: \"" initial-goal "\"")))
 
-  (define-values (q-ok? questions)
-    (claude-execute repo-path question-prompt #:model "sonnet" #:timeout 30))
+  (let round-loop ([round 1])
+    ;; Ask Claude: more questions or ready to plan?
+    (define round-prompt
+      (string-append
+       "You are helping a user plan a code change.\n\n"
+       "Conversation so far:\n"
+       (string-join conversation-history "\n") "\n\n"
+       "Based on the conversation, decide:\n"
+       "- If you need more info, output QUESTIONS: followed by 2-3 numbered questions.\n"
+       "- If you have enough info, output READY\n\n"
+       "Only output QUESTIONS: or READY, nothing else."))
 
-  (unless q-ok?
-    (printf "Could not generate questions. Using goal as-is.\n")
-    (printf "~a\n\n" initial-goal))
+    (define-values (ok? response)
+      (claude-execute repo-path round-prompt #:model "sonnet" #:timeout 30))
 
-  (when q-ok?
-    (displayln questions)
-    (printf "\n"))
+    (cond
+      ;; Claude wants more info
+      [(and ok? (string-contains? response "QUESTIONS:"))
+       (define questions
+         (let ([m (regexp-match-positions #rx"QUESTIONS:" response)])
+           (if m
+               (string-trim (substring response (cdr (car m))))
+               (string-trim response))))
+       ;; Show questions to user (strip the "QUESTIONS:" prefix if regex missed)
+       (displayln questions)
+       (printf "\n")
 
-  ;; Step 2: Collect user answers
-  (printf "Your answers (type each answer, press Enter; empty line when done):\n")
-  (define answers
-    (let loop ([acc '()])
-      (define line (read-line-interactive "  > "))
-      (cond
-        [(string=? line "") (reverse acc)]
-        [else (loop (cons line acc))])))
+       ;; Collect answers
+       (printf "Your answers (Enter on empty line when done):\n")
+       (define answers
+         (let loop ([acc '()])
+           (define line (read-line-interactive "  > "))
+           (cond
+             [(string=? line "") (reverse acc)]
+             [else (loop (cons line acc))])))
 
-  ;; Step 3: Ask Claude to synthesize into precise subtasks
-  (printf "Synthesizing task spec...\n")
+       ;; Add to conversation
+       (set! conversation-history
+         (append conversation-history
+                 (list (string-append "Agent questions (round " (number->string round) "):\n"
+                                      questions))
+                 (list (string-append "User answers (round " (number->string round) "):\n"
+                                      (string-join
+                                       (map (lambda (a) (string-append "- " a)) answers) "\n")))))
+
+       ;; Continue (max 5 rounds to avoid infinite loop)
+       (if (< round 5)
+           (round-loop (add1 round))
+           (void))]
+
+      ;; Claude is ready or failed — proceed to synthesis
+      [else (void)]))
+
+  ;; Synthesize into subtasks
+  (printf "\nSynthesizing task spec...\n")
   (define spec-prompt
     (string-append
      "A user wants to modify their project.\n\n"
-     "Original goal: \"" initial-goal "\"\n\n"
-     (if q-ok?
-         (string-append "Clarifying questions:\n" questions "\n\n")
-         "")
-     "User's answers:\n"
-     (string-join (map (lambda (a) (string-append "- " a)) answers) "\n")
-     "\n\n"
+     (string-join conversation-history "\n") "\n\n"
      "Break this into small, independent subtasks that can be implemented one at a time.\n"
      "Each subtask should be completable in a single commit.\n\n"
      "Format:\n"
@@ -201,11 +223,8 @@
   (define final-spec
     (if (and s-ok? (> (string-length (string-trim spec)) 0))
         (string-trim spec)
-        ;; Fallback: combine goal + answers as single task
         (string-append "OVERVIEW: " initial-goal "\n\n"
-                       "SUBTASK 1: " initial-goal "\n"
-                       "User clarifications:\n"
-                       (string-join (map (lambda (a) (string-append "- " a)) answers) "\n"))))
+                       "SUBTASK 1: " initial-goal)))
 
   (printf "\n--- Task spec ---\n~a\n-----------------\n\n" final-spec)
   (define confirm (read-line-interactive "Proceed? (Enter = yes, or type changes) > "))
@@ -217,7 +236,6 @@
      (printf "Cancelled.\n")
      (exit 0)]
     [else
-     ;; User wants changes — append their input
      (string-append final-spec "\n\nAdditional requirements: " confirm)]))
 
 ;; ============================================================
