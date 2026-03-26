@@ -17,11 +17,11 @@
 (define (claude-execute repo-path-raw prompt
                         #:model [model DEFAULT-MODEL]
                         #:timeout [timeout CLAUDE-TIMEOUT])
-  "Call claude -p with prompt via temp files, return (values success? output)."
+  "Call claude -p (print mode, no tools) for lightweight queries.
+   Returns (values success? output)."
   (define repo-path
     (if (string? repo-path-raw) (string->path repo-path-raw) repo-path-raw))
 
-  ;; Write prompt to temp file (avoids shell arg length limits)
   (define tmp-prompt (make-temporary-file "ruyi-prompt-~a.txt"))
   (define tmp-output (make-temporary-file "ruyi-output-~a.txt"))
   (define tmp-err (make-temporary-file "ruyi-err-~a.txt"))
@@ -29,16 +29,7 @@
     (lambda (out) (display prompt out))
     #:exists 'replace)
 
-  ;; Forward proxy env vars from parent process
-  (define proxy-env
-    (string-join
-     (filter (lambda (s) (not (string=? s "")))
-             (map (lambda (v)
-                    (define val (getenv v))
-                    (if val (format "export ~a='~a';" v val) ""))
-                  '("https_proxy" "http_proxy" "all_proxy"
-                    "HTTPS_PROXY" "HTTP_PROXY" "ALL_PROXY")))
-     " "))
+  (define proxy-env (build-proxy-env))
 
   (define cmd
     (format "~a cd ~a && ~a -p --dangerously-skip-permissions --model ~a < ~a > ~a 2> ~a"
@@ -50,7 +41,78 @@
             (path->string tmp-output)
             (path->string tmp-err)))
 
-  ;; Run with timeout
+  (define-values (exit-code _timeout?)
+    (run-with-timeout cmd repo-path timeout))
+
+  (define output
+    (if (file-exists? tmp-output) (file->string tmp-output) ""))
+
+  (for ([f (list tmp-prompt tmp-output tmp-err)])
+    (with-handlers ([exn:fail? (lambda (_) (void))])
+      (delete-file f)))
+
+  (if exit-code
+      (values (zero? exit-code) output)
+      (values #f "TIMEOUT")))
+
+(define (claude-agent repo-path-raw prompt
+                       #:model [model DEFAULT-MODEL]
+                       #:timeout [timeout (* CLAUDE-TIMEOUT 2)])
+  "Call claude in full agent mode (reads files, runs commands, iterates).
+   Returns (values success? output)."
+  (define repo-path
+    (if (string? repo-path-raw) (string->path repo-path-raw) repo-path-raw))
+
+  (define tmp-prompt (make-temporary-file "ruyi-prompt-~a.txt"))
+  (define tmp-output (make-temporary-file "ruyi-output-~a.txt"))
+  (define tmp-err (make-temporary-file "ruyi-err-~a.txt"))
+  (call-with-output-file tmp-prompt
+    (lambda (out) (display prompt out))
+    #:exists 'replace)
+
+  (define proxy-env (build-proxy-env))
+
+  ;; Full agent mode: no -p, Claude Code uses all tools
+  (define cmd
+    (format "~a cd ~a && ~a --dangerously-skip-permissions --model ~a -p < ~a > ~a 2> ~a"
+            proxy-env
+            (path->string repo-path)
+            (path->string CLAUDE-PATH)
+            model
+            (path->string tmp-prompt)
+            (path->string tmp-output)
+            (path->string tmp-err)))
+
+  (define-values (exit-code _timeout?)
+    (run-with-timeout cmd repo-path timeout))
+
+  (define output
+    (if (file-exists? tmp-output) (file->string tmp-output) ""))
+
+  (for ([f (list tmp-prompt tmp-output tmp-err)])
+    (with-handlers ([exn:fail? (lambda (_) (void))])
+      (delete-file f)))
+
+  (if exit-code
+      (values (zero? exit-code) output)
+      (values #f "TIMEOUT")))
+
+;; ============================================================
+;; Shared helpers
+;; ============================================================
+
+(define (build-proxy-env)
+  (string-join
+   (filter (lambda (s) (not (string=? s "")))
+           (map (lambda (v)
+                  (define val (getenv v))
+                  (if val (format "export ~a='~a';" v val) ""))
+                '("https_proxy" "http_proxy" "all_proxy"
+                  "HTTPS_PROXY" "HTTP_PROXY" "ALL_PROXY")))
+   " "))
+
+(define (run-with-timeout cmd repo-path timeout)
+  "Run cmd with timeout. Returns (values exit-code-or-#f timed-out?)."
   (define done-channel (make-channel))
   (define worker
     (thread
@@ -59,75 +121,28 @@
          (parameterize ([current-directory repo-path])
            (system/exit-code (format "/bin/bash -c ~a" (shell-quote cmd)))))
        (channel-put done-channel exit-code))))
-
   (define result (sync/timeout timeout done-channel))
-
-  ;; Read output
-  (define output
-    (if (file-exists? tmp-output) (file->string tmp-output) ""))
-
-  ;; Cleanup
-  (for ([f (list tmp-prompt tmp-output tmp-err)])
-    (with-handlers ([exn:fail? (lambda (_) (void))])
-      (delete-file f)))
-
   (cond
-    [result (values (zero? result) output)]
+    [result (values result #f)]
     [else
      (kill-thread worker)
-     (values #f "TIMEOUT")]))
+     (values #f #t)]))
 
 (define (plan-says-skip? plan-text)
   "Check if the agent decided to skip planning for a simple task."
   (regexp-match? #rx"(?i:SKIP_PLAN)" (string-trim plan-text)))
 
 (define (claude-implement repo mode-obj tsk)
-  "Plan first, confirm, then implement."
+  "Use Claude Code in full agent mode to implement a task.
+   Claude reads files, writes code, runs tests, and iterates on its own."
   (define prompt ((mode-build-prompt mode-obj) repo tsk))
   (define repo-path (repo-config-path repo))
 
-  ;; Step 1: Ask Claude to output a plan (lightweight, no full context)
-  (printf "  Planning... ")
+  (printf "  Implementing (agent mode)... ")
   (flush-output)
-  (define task-desc (task-description tsk))
-  (define goal-text
-    (if (and (task-extra tsk) (hash-has-key? (task-extra tsk) 'goal))
-        (hash-ref (task-extra tsk) 'goal)
-        task-desc))
-  (define plan-prompt
-    (string-append
-     "You are planning a code change. Do NOT write code yet.\n\n"
-     "Task: " goal-text "\n\n"
-     "If this is a simple task (single file, small well-defined change, obvious approach), "
-     "output just: SKIP_PLAN\n\n"
-     "Otherwise, output a brief plan:\n"
-     "- What files to create or modify\n"
-     "- What changes to make (1-2 lines each)\n"
-     "- What tests to add\n\n"
-     "Start with 'Plan:' and keep it concise."))
-
-  (define-values (plan-ok? plan)
-    (claude-execute repo-path plan-prompt #:model "sonnet" #:timeout 60))
-
-  (define skip-plan?
-    (and plan-ok? (plan-says-skip? plan)))
-
-  ;; Show plan, skip, or auto-execute
-  (cond
-    [skip-plan?
-     (printf "simple task, skipping plan\n  Implementing... ")
-     (flush-output)]
-    [(not plan-ok?)
-     (printf "skipped\n  Implementing... ")
-     (flush-output)]
-    [else
-     (printf "done\n\n")
-     (displayln (string-trim plan))
-     (printf "\n  Implementing... ")
-     (flush-output)])
 
   (define-values (ok? output)
-    (claude-execute repo-path prompt))
+    (claude-agent repo-path prompt))
   (if ok?
       (begin (printf "done\n") #t)
       (begin (printf "failed\n") #f)))
