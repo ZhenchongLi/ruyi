@@ -31,16 +31,18 @@
     (printf "No git repo found. Initializing...\n")
     (parameterize ([current-directory path])
       (system "git init")
+      ;; Create initial commit (even if empty, use --allow-empty)
       (system "git add -A")
-      (system "git commit -m 'initial commit'")))
+      (system "git commit --allow-empty -m 'initial commit'")))
 
-  ;; Detect base branch
+  ;; Detect base branch (default "main" if no commits yet)
   (define base-branch
-    (string-trim
-     (with-output-to-string
-       (lambda ()
-         (parameterize ([current-directory path])
-           (system "git rev-parse --abbrev-ref HEAD"))))))
+    (let ([raw (string-trim
+                (with-output-to-string
+                  (lambda ()
+                    (parameterize ([current-directory path])
+                      (system "git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main")))))])
+      (if (string=? raw "") "main" raw)))
 
   ;; Generate config
   (define config-content
