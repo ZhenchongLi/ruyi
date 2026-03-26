@@ -1,17 +1,23 @@
 #lang racket/base
 (require racket/string racket/format racket/file racket/path racket/list)
-(require "../config.rkt" "../tasks.rkt")
+(require "../config.rkt" "../tasks.rkt" "../claude.rkt")
 (provide freestyle-mode make-freestyle-mode)
 
 ;; ============================================================
 ;; Freestyle mode: user says what they want, Claude implements
 ;;
-;; Unlike other modes (which auto-select tasks), this mode
-;; takes a human-provided goal and iterates on it.
+;; Two-step process:
+;;   1. Claude asks clarifying questions (interactive)
+;;   2. Claude implements the precise spec (deterministic loop)
 ;; ============================================================
 
-(define (make-freestyle-mode goal)
-  "Create a freestyle mode with a specific user goal."
+(define (make-freestyle-mode initial-goal #:clarify? [clarify? #t] #:repo-path [repo-path #f])
+  "Create a freestyle mode. If clarify? is #t, runs interactive Q&A first."
+  (define refined-goal
+    (if (and clarify? repo-path (not (string=? initial-goal "")))
+        (claude-clarify repo-path initial-goal)
+        initial-goal))
+
   (define iteration-count 0)
 
   (define (freestyle-select-task repo done-tasks)
@@ -19,12 +25,13 @@
     (if (> iteration-count 1)
         #f  ;; one shot per goal
         (task ""
-              (format "Freestyle: ~a" (if (> (string-length goal) 60)
-                                          (string-append (substring goal 0 60) "...")
-                                          goal))
+              (format "Freestyle: ~a"
+                      (if (> (string-length refined-goal) 60)
+                          (string-append (substring refined-goal 0 60) "...")
+                          refined-goal))
               1
               (make-immutable-hash
-               (list (cons 'goal goal))))))
+               (list (cons 'goal refined-goal))))))
 
   (define (freestyle-build-prompt repo tsk)
     (define user-goal (hash-ref (task-extra tsk) 'goal))
@@ -38,7 +45,7 @@
 
     (string-append
      "You are implementing a feature/change for this project.\n\n"
-     "## What the user wants\n\n"
+     "## Precise task specification\n\n"
      user-goal "\n\n"
      "## Rules\n\n"
      "- Read the relevant source files before making changes.\n"
@@ -56,4 +63,4 @@
         "evolve(freestyle)"))
 
 ;; Default instance (goal set at runtime)
-(define freestyle-mode (make-freestyle-mode ""))
+(define freestyle-mode (make-freestyle-mode "" #:clarify? #f))

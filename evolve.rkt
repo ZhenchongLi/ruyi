@@ -82,7 +82,8 @@ Examples:
     (define config-sym (string->symbol (string-append repo-name "-config")))
     (define config-module `(file ,(path->string config-file)))
     (define repo-config (dynamic-require config-module config-sym))
-    (define fm (make-freestyle-mode goal))
+    (define fm (make-freestyle-mode goal
+                 #:repo-path (repo-config-path repo-config)))
     (evolution-loop repo-config fm))
 
   ;; ---- Dispatch ----
