@@ -2,9 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
 
-**Every change either commits clean or reverts completely. You review one PR, not a disaster recovery incident.**
-
-Ruyi runs Claude Code in a loop with an atomic guarantee: each iteration passes your tests and commits, or gets reverted as if it never happened. No half-applied changes. No broken intermediate state. Ever.
+**You review one PR, not a disaster recovery incident.** Ruyi runs Claude Code in a loop where every change either commits clean or reverts completely — no half-applied changes, no broken intermediate state, ever.
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 >
@@ -36,50 +34,67 @@ ruyi                     # start evolving
 
 ## What a run looks like
 
+<!-- To record your own: asciinema rec -t "ruyi coverage run" -->
+
 A real `coverage` run on a TypeScript project. Each iteration is independent — a failure in iteration 2 doesn't affect the code committed in iteration 1:
 
 ```
 $ ruyi
 
-=== Iteration 1/20 ===
-Task: Write tests for src/auth/session.ts
-Claude: implementing...
-Validate: pnpm test ✓ (14 tests, 14 passed)
-Result: keep (commit a3f9c21)        ← merged into your branch
+  ┌──────────────────────────────────────────────────────────────┐
+  │ Ruyi — coverage mode                                         │
+  │ Project: cove (TypeScript/react, pnpm + vitest)              │
+  │ Branch:  ruyi/coverage-session                               │
+  │ Plan:    20 iterations, 500-line diff limit                  │
+  └──────────────────────────────────────────────────────────────┘
 
-=== Iteration 2/20 ===
-Task: Write tests for src/api/users.ts
-Claude: implementing...
-Validate: pnpm test ✗ (1 assertion failed)
-Result: discard (reverted)           ← gone, as if it never happened
+  === Iteration 1/20 ═══════════════════════════════════════════
 
-=== Iteration 3/20 ===
-Task: Write tests for src/api/billing.ts
-Claude: implementing...
-Validate: pnpm test ✓ (8 tests, 8 passed)
-Result: keep (commit e82b4f0)
+  Task: Write tests for src/auth/session.ts
+  Claude: implementing...
+  Validate: pnpm test ✓ (14 tests, 14 passed)
+  ✅ keep (commit a3f9c21)        ← merged into your branch
 
-...
+  === Iteration 2/20 ═══════════════════════════════════════════
 
-=== Done: 11 kept, 3 discarded, 6 skipped ===
+  Task: Write tests for src/api/users.ts
+  Claude: implementing...
+  Validate: pnpm test ✗ (1 assertion failed)
+  ❌ discard (reverted)           ← gone, as if it never happened
+
+  === Iteration 3/20 ═══════════════════════════════════════════
+
+  Task: Write tests for src/api/billing.ts
+  Claude: implementing...
+  Validate: pnpm test ✓ (8 tests, 8 passed)
+  ✅ keep (commit e82b4f0)
+
+  ...
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │ Done: 11 kept, 3 discarded, 6 skipped                       │
+  │ Branch ruyi/coverage-session ready for review                │
+  └──────────────────────────────────────────────────────────────┘
 ```
 
-**Before and after** — your git log at the end of a run:
+**Your git log at the end** — only passing iterations survive:
 
 ```
 $ git log --oneline ruyi/coverage-session
 
 e82b4f0 test(billing): add 8 tests for src/api/billing.ts
 a3f9c21 test(session): add 14 tests for src/auth/session.ts
-  ↑ only passing iterations survive — failed attempts leave no trace
+  ↑ failed attempts leave no trace
 ```
 
 ## How it works
 
 ```
-  "Improve test coverage"
-         │
-         ▼
+                    ┌─────────────────────────────────────────────────┐
+                    │           "Improve test coverage"               │
+                    └────────────────────┬────────────────────────────┘
+                                         │
+                                         ▼
   ┌─────────────┐      ┌──────────────┐      ┌────────────┐
   │  Pick task   │ ───► │  Claude Code  │ ───► │  Run tests  │
   │  (Racket)    │      │  writes code  │      │  (your CI)  │
@@ -87,9 +102,13 @@ a3f9c21 test(session): add 14 tests for src/auth/session.ts
          ▲                                      ┌────┴────┐
          │                                   pass?      fail?
          │                                     │          │
-         │                                git commit  git revert
-         │                                     │          │
-         └──────── next iteration ◄────────────┴──────────┘
+         │                              ┌──────┘          └──────┐
+         │                              ▼                        ▼
+         │                        ╔═══════════╗          ┌───────────┐
+         │                        ║ git commit ║          │ git revert │
+         │                        ╚═════╤═════╝          └─────┬─────┘
+         │                              │                      │
+         └──────── next iteration ◄─────┴──────────────────────┘
 ```
 
 The core idea: **deterministic orchestration in a compiled language, creative work delegated to the LLM**. The control loop, git operations, and safety invariants are Racket — pattern matching and immutable data structures make them easy to audit. Claude handles what AI is good at: reading code, understanding intent, writing implementations.
@@ -112,6 +131,7 @@ Each mode takes a different goal and turns it into a task queue:
 | `refactor` | Simplifies complex code | "Refactor large files" | `keep (commit c7a2f13)` — one file simplified, build still passes |
 | `filesize` | Splits oversized files into modules | "Break up large files" | `keep (commit d9b3e24)` — extracted module + updated imports |
 | `evolve-doc` | Improves docs via LLM-as-Judge scoring | "Improve the README" | `keep (score: 8.3)` or `discard (score: 7.4 < 8.0 threshold)` |
+| `freestyle` | Any goal in natural language | "Translate docs to Spanish" | `keep (commit f1c4a87)` — whatever you asked for, validated by your tests |
 
 You don't pick a mode — just describe your goal in plain English during `ruyi init`, and Ruyi selects the right one.
 
@@ -158,16 +178,22 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 | Go | go | go test | `go.mod` |
 | Racket | raco | raco test | `*.rkt` |
 
-## Dogfooding: this README was written by Ruyi
+## Battle-tested
 
-The `evolve-doc` mode wrote this README. It iterated 20 times against a quality rubric scored by an LLM judge — keeping versions that beat the previous score, reverting the rest. The exact same commit-or-revert loop that writes your tests also wrote these words:
+Ruyi has been used on real codebases beyond its own repo:
 
-| What happened | Score | Commit |
-|--------------|-------|--------|
-| First accepted version | **8.3** | [`f293c4d`](https://github.com/ZhenchongLi/ruyi/commit/f293c4d) |
-| Current version | **8.7** | [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) |
+- **Cove** — a TypeScript/React app with vitest. Ruyi ran 20-iteration `coverage` sessions across stores, database repos, hooks, and lib modules, with priority ordering and forbidden-file protection on config files. The same atomic guarantee held across pnpm build + test validation.
+- **Ruyi itself** — `coverage` mode writing tests for the core Racket engine, and `evolve-doc` mode writing this README (24 iterations logged in [`evolution-log.tsv`](evolution-log.tsv), 7 kept, 17 discarded — every commit hash links to the real diff on GitHub).
 
-20 iterations total, 13 discarded. Every commit hash in [`evolution-log.tsv`](evolution-log.tsv) links to the real diff on GitHub. Ruyi has also been used on its own codebase in `coverage` mode, writing tests for the core engine modules.
+The evolution log for this README tells the full story: scores started at 7.6, climbed to 8.7 through iterative improvement, with the majority of attempts discarded for not clearing the quality bar. That's the system working as designed — most AI output isn't good enough, and Ruyi's job is to keep only what passes.
+
+| Metric | Value |
+|--------|-------|
+| Total iterations logged | 24 |
+| Kept (passed validation) | 7 |
+| Discarded (failed or below threshold) | 17 |
+| Score range | 7.4 → 8.7 |
+| Zero broken main branches | ✓ |
 
 <details>
 <summary>Why Racket?</summary>
