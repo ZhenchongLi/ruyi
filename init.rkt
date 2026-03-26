@@ -84,24 +84,15 @@
   (define extra-excluded '())
 
   (when ok?
-    ;; Simple JSON extraction
+    ;; Simple JSON extraction via regex
     (define response (string-trim claude-response))
-    (when (string-contains? response "\"mode\"")
-      (define (extract-field field str)
-        (define pattern (string-append "\"" field "\""))
-        (define idx (string-contains? str pattern))
-        (when idx
-          (define after (substring str (+ idx (string-length pattern))))
-          (define colon-idx (string-contains? after ":"))
-          (when colon-idx
-            (define value-start (substring after (add1 colon-idx)))
-            (define trimmed (string-trim value-start))
-            (cond
-              [(string-prefix? trimmed "\"")
-               (define end (string-contains? (substring trimmed 1) "\""))
-               (and end (substring trimmed 1 (add1 end)))]
-              [else #f]))))
+    (define (extract-field field str)
+      (define m (regexp-match
+                 (regexp (string-append "\"" field "\"\\s*:\\s*\"([^\"]+)\""))
+                 str))
+      (and m (bytes->string/utf-8 (cadr m))))
 
+    (when (string-contains? response "\"mode\"")
       (define mode-val (extract-field "mode" response))
       (when mode-val (set! suggested-mode mode-val))
       (define desc-val (extract-field "description" response))
@@ -122,8 +113,7 @@
   (printf "Created: ~a\n\n" RUYI-CONFIG-FILE)
   (printf "Ready! Run:\n")
   (printf "  cd ~a\n" (path->string path))
-  (printf "  racket ~a/evolve.rkt\n\n"
-          (path->string (find-system-path 'orig-dir))))
+  (printf "  ruyi do \"your goal\"\n\n"))
 
 ;; ============================================================
 ;; Config file generator
