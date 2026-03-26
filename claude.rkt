@@ -101,36 +101,22 @@
   (define-values (plan-ok? plan)
     (claude-execute repo-path plan-prompt #:model "sonnet" #:timeout 60))
 
+  ;; Show plan, then auto-execute
   (cond
     [(not plan-ok?)
-     (printf "failed\n")
-     #f]
+     (printf "skipped\n  Implementing... ")
+     (flush-output)]
     [else
-     ;; Show plan and ask for confirmation
      (printf "done\n\n")
      (displayln (string-trim plan))
-     (printf "\n")
-     (define trimmed
-       (read-line-interactive "  Execute? (Enter = yes, 'skip' = next, or type adjustments) > "))
+     (printf "\n  Implementing... ")
+     (flush-output)])
 
-     (cond
-       [(string=? trimmed "skip")
-        (printf "  Skipped.\n")
-        #f]
-       [else
-        ;; Step 2: Execute (with adjustments if any)
-        (define final-prompt
-          (if (string=? trimmed "")
-              prompt
-              (string-append prompt "\n\nAdditional instruction from user: " trimmed)))
-
-        (printf "  Implementing... ")
-        (flush-output)
-        (define-values (ok? output)
-          (claude-execute repo-path final-prompt))
-        (if ok?
-            (begin (printf "done\n") #t)
-            (begin (printf "failed\n") #f))])]))
+  (define-values (ok? output)
+    (claude-execute repo-path prompt))
+  (if ok?
+      (begin (printf "done\n") #t)
+      (begin (printf "failed\n") #f)))
 
 ;; ============================================================
 ;; Interactive Claude: clarify requirements before execution
