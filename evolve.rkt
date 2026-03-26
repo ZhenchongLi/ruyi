@@ -22,6 +22,7 @@ Usage (run from your project directory):
   ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
   ruyi modes                              List saved modes
   ruyi import <file>                      Import a mode file
+  ruyi clean                              Remove stale worktrees
   ruyi init [path]                        Manually init (usually not needed)
   ruyi update                             Update ruyi to latest version
   ruyi version                            Show version
@@ -178,6 +179,26 @@ Examples:
      (define dest (build-path mdir name))
      (copy-file source-path dest #t)
      (printf "Imported: .ruyi-modes/~a\n" name)]
+
+    ;; ruyi clean
+    [(and (= (length args) 1) (string=? (first args) "clean"))
+     (define dir (current-directory))
+     (ruyi-ensure-init! dir)
+     (define repo (load-local-config dir))
+     (define tmp (path->string (find-system-path 'temp-dir)))
+     (define stale
+       (for/list ([d (directory-list (string->path tmp))]
+                  #:when (string-prefix? (path->string d) "ruyi-wt-"))
+         (build-path tmp (path->string d))))
+     (cond
+       [(null? stale)
+        (printf "No stale worktrees found.\n")]
+       [else
+        (printf "Cleaning ~a stale worktree(s):\n" (length stale))
+        (for ([wt (in-list stale)])
+          (printf "  ~a\n" (path->string wt))
+          (git-worktree-remove! repo (path->string wt)))
+        (printf "Done.\n")])]
 
     ;; Unknown
     [else
