@@ -1,6 +1,6 @@
 #lang racket/base
-(require racket/format racket/list racket/string)
-(require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt")
+(require racket/format racket/list racket/string racket/file)
+(require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt" "judge.rkt")
 (provide evolution-loop)
 
 ;; ============================================================
@@ -122,19 +122,45 @@
                       diff-lines (repo-config-max-diff-lines repo))
               (current-continuation-marks))))
 
-    ;; 4. Run validation gate
-    (define validation (run-validation-gate repo))
+    ;; 4. Validate — either Judge or build+test
+    (define has-rubric?
+      (and (task-extra tsk) (hash-has-key? (task-extra tsk) 'rubric)))
+
     (cond
-      [(validation-result-passed? validation)
-       ;; All passed — commit
-       (define hash (git-commit! repo mode-obj tsk))
-       (iteration-result 'keep hash)]
+      ;; Judge mode: score with LLM
+      [has-rubric?
+       (define rubric (hash-ref (task-extra tsk) 'rubric))
+       (define min-score (hash-ref (task-extra tsk) 'min-score 7.0))
+       (define file-path (task-source-file tsk))
+       (define content
+         (if (file-exists? file-path) (file->string file-path) ""))
+       (define-values (score weaknesses feedback)
+         (judge-evaluate (repo-config-path repo) rubric content))
+       (cond
+         [(>= score min-score)
+          (define hash (git-commit! repo mode-obj tsk))
+          (printf "  Weaknesses: ~a\n" (string-join weaknesses "; "))
+          (iteration-result 'keep (format "~a (score: ~a)" hash score))]
+         [else
+          (printf "  Score ~a < ~a (min). Weaknesses: ~a\n"
+                  score min-score (string-join weaknesses "; "))
+          (git-revert! repo)
+          (iteration-result 'discard
+                            (format "Score ~a < ~a" score min-score))])]
+
+      ;; Standard mode: build + test
       [else
-       ;; Failed — revert
-       (git-revert! repo)
-       (iteration-result 'discard
-                         (format "Validation failed: ~a"
-                                 (validation-result-failed-step validation)))])))
+       (define validation (run-validation-gate repo))
+       (cond
+         [(validation-result-passed? validation)
+          (define hash (git-commit! repo mode-obj tsk))
+          (iteration-result 'keep hash)]
+         [else
+          (git-revert! repo)
+          (iteration-result 'discard
+                            (format "Validation failed: ~a"
+                                    (validation-result-failed-step validation)))])])))
+
 
 ;; ============================================================
 ;; Summary

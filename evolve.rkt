@@ -4,7 +4,8 @@
   (require racket/cmdline racket/string racket/format racket/path racket/file racket/list)
   (require "config.rkt" "engine.rkt" "init.rkt"
            "modes/coverage.rkt" "modes/filesize.rkt"
-           "modes/issue.rkt" "modes/refactor.rkt")
+           "modes/issue.rkt" "modes/refactor.rkt"
+           "modes/evolve-doc.rkt")
 
   ;; ============================================================
   ;; Ruyi — as you wish
@@ -15,7 +16,8 @@
      (list (cons "coverage" coverage-mode)
            (cons "filesize" filesize-mode)
            (cons "issue" issue-mode)
-           (cons "refactor" refactor-mode))))
+           (cons "refactor" refactor-mode)
+           (cons "evolve-doc" evolve-doc-mode))))
 
   ;; ---- Function definitions (before dispatch) ----
 
@@ -29,7 +31,7 @@ Usage:
   racket evolve.rkt <mode>          Run with specific mode
   racket evolve.rkt <repo> <mode>   Legacy: use configs/<repo>.rkt
 
-Modes:  coverage, filesize, issue, refactor
+Modes:  coverage, filesize, issue, refactor, evolve-doc
 
 Quick start:
   cd your-project
