@@ -1,18 +1,17 @@
 #lang racket/base
 (require racket/format racket/list racket/string racket/file racket/port)
 (require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt" "judge.rkt")
-;; read-line-interactive is provided by claude.rkt via (all-defined-out)
-(provide evolution-loop human-feedback)
-
-;; Global parameter: human feedback from last interactive prompt
-(define human-feedback (make-parameter ""))
+(provide evolution-loop)
 
 ;; ============================================================
 ;; Core evolution loop — deterministic backbone
+;;
+;; Prepare: user confirms goal (interactive)
+;; Loop: fully autonomous, auto-continues (Ctrl-C to stop)
+;; Finish: show summary, merge to main, cleanup
 ;; ============================================================
 
 (define (evolution-loop repo mode-obj)
-  "Run the evolution loop: select → implement → validate → keep/discard."
 
   ;; Setup
   (printf "\n=== Ruyi Evolution Engine ===\n")
@@ -40,47 +39,44 @@
   (log-init! repo)
   (journal-init! repo (mode-name mode-obj))
 
-  ;; Main loop
+  ;; Track results for summary
+  (define kept-tasks '())
+  (define discarded-count 0)
+
+  ;; Main loop (auto-continues, Ctrl-C to stop)
   (let loop ([i 1]
              [consecutive-fails 0]
-             [done '()]
-             [user-feedback ""])
+             [done '()])
 
     (cond
       ;; Termination: iteration limit
       [(> i (repo-config-max-iterations repo))
        (printf "\nReached iteration limit (~a).\n"
                (repo-config-max-iterations repo))
-       (print-summary done)]
+       (finish-evolution repo branch kept-tasks discarded-count)]
 
       ;; Termination: consecutive failures
       [(>= consecutive-fails (repo-config-max-consecutive-fails repo))
        (printf "\n~a consecutive failures. Stopping.\n" consecutive-fails)
-       (print-summary done)]
+       (finish-evolution repo branch kept-tasks discarded-count)]
 
       ;; Normal execution
       [else
-       ;; Step 1: Select task
        (define tsk ((mode-select-task mode-obj) repo done))
 
        (cond
          [(not tsk)
           (printf "\nNo more tasks found.\n")
-          (print-summary done)]
+          (finish-evolution repo branch kept-tasks discarded-count)]
 
          [else
           (printf "\n[~a/~a] ~a\n" i (repo-config-max-iterations repo)
                   (task-description tsk))
 
-          ;; Pass human feedback to mode (if supported)
-          (when (and (task-extra tsk)
-                     (hash-has-key? (task-extra tsk) 'set-human-input!))
-            ((hash-ref (task-extra tsk) 'set-human-input!) user-feedback))
-
-          ;; Step 2-4: Execute one iteration
+          ;; Execute one iteration
           (define result (execute-one-iteration repo mode-obj tsk))
 
-          ;; Step 5: Log
+          ;; Log
           (log-iteration! repo (mode-name mode-obj) tsk result)
 
           ;; Print result
@@ -88,32 +84,75 @@
                   (if (eq? (iteration-result-status result) 'keep) "+" "-")
                   (iteration-result-detail result))
 
-          ;; Ask user for feedback (interactive)
-          (define input (read-line-interactive "\n  > "))
-          (define new-feedback
-            (cond
-              [(string=? input "stop")
-               (printf "\nStopped by user.\n")
-               (print-summary done)
-               (exit 0)]
-              [else input]))
+          ;; Track for summary
+          (when (eq? (iteration-result-status result) 'keep)
+            (set! kept-tasks (cons (task-description tsk) kept-tasks)))
+          (when (eq? (iteration-result-status result) 'discard)
+            (set! discarded-count (add1 discarded-count)))
 
-          ;; Continue — only add to done if kept (so discarded docs can retry)
+          ;; Auto-continue
           (loop (add1 i)
                 (if (eq? (iteration-result-status result) 'discard)
                     (add1 consecutive-fails)
                     0)
                 (if (eq? (iteration-result-status result) 'keep)
                     (cons tsk done)
-                    done)
-                new-feedback)])])))
+                    done))])])))
+
+;; ============================================================
+;; Finish: summary + merge + cleanup
+;; ============================================================
+
+(define (finish-evolution repo branch kept-tasks discarded-count)
+  (define kept-count (length kept-tasks))
+
+  ;; Show summary
+  (printf "\n=== Evolution Complete ===\n")
+  (printf "Kept:      ~a\n" kept-count)
+  (printf "Discarded: ~a\n" discarded-count)
+  (when (> kept-count 0)
+    (printf "\nChanges made:\n")
+    (for ([desc (in-list (reverse kept-tasks))])
+      (printf "  + ~a\n" desc)))
+  (printf "=========================\n")
+
+  ;; If nothing was kept, just go back to main
+  (when (= kept-count 0)
+    (printf "\nNo changes to apply.\n")
+    (shell! repo "git" "checkout" (repo-config-base-branch repo))
+    (return-void))
+
+  ;; Ask to merge
+  (printf "\nApply these changes to ~a? (Enter = yes, 'no' = discard) > "
+          (repo-config-base-branch repo))
+  (flush-output)
+  (define answer (read-line))
+  (define trimmed (if (eof-object? answer) "" (string-trim answer)))
+
+  (cond
+    [(string=? trimmed "no")
+     (printf "Changes kept on branch: ~a\n" branch)
+     (shell! repo "git" "checkout" (repo-config-base-branch repo))]
+    [else
+     ;; Merge to main
+     (define base (repo-config-base-branch repo))
+     (shell! repo "git" "checkout" base)
+     (shell! repo "git" "merge" branch)
+     (printf "\nMerged to ~a.\n" base)
+
+     ;; Clean up branch
+     (with-handlers ([exn:fail? (lambda (_) (void))])
+       (shell! repo "git" "branch" "-d" branch))
+
+     (printf "Done.\n")]))
+
+(define (return-void) (void))
 
 ;; ============================================================
 ;; Single iteration execution
 ;; ============================================================
 
 (define (execute-one-iteration repo mode-obj tsk)
-  "Execute one iteration with full safety wrapping."
   (with-handlers
     ([exn:fail?
       (lambda (e)
@@ -162,9 +201,7 @@
          (if (file-exists? file-path) (file->string file-path) ""))
        (define-values (score weaknesses feedback)
          (judge-evaluate (repo-config-path repo) rubric content))
-       ;; Always pass feedback to next round (whether keep or discard)
        (set-feedback! score weaknesses feedback)
-       ;; Journal detailed entry
        (journal-iteration! repo
                            (format "~a" (hash-ref (task-extra tsk) 'min-score 0))
                            (if (>= score min-score) "keep" "discard")
@@ -175,14 +212,11 @@
        (cond
          [(>= score min-score)
           (define hash (git-commit! repo mode-obj tsk))
-          (printf "  Weaknesses: ~a\n" (string-join weaknesses "; "))
           (iteration-result 'keep (format "~a (score: ~a)" hash score))]
          [else
-          (printf "  Score ~a < ~a (min). Weaknesses: ~a\n"
-                  score min-score (string-join weaknesses "; "))
+          (printf "  Score ~a < ~a\n" score min-score)
           (git-revert! repo)
-          (iteration-result 'discard
-                            (format "Score ~a < ~a" score min-score))])]
+          (iteration-result 'discard (format "Score ~a < ~a" score min-score))])]
 
       ;; Standard mode: build + test
       [else
@@ -196,14 +230,3 @@
           (iteration-result 'discard
                             (format "Validation failed: ~a"
                                     (validation-result-failed-step validation)))])])))
-
-
-;; ============================================================
-;; Summary
-;; ============================================================
-
-(define (print-summary done-tasks)
-  (define total (length done-tasks))
-  (printf "\n=== Summary ===\n")
-  (printf "Total iterations: ~a\n" total)
-  (printf "================\n"))

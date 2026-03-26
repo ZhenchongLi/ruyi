@@ -116,3 +116,55 @@
     (shell-in-dir (repo-config-path repo) "git" "status" "--porcelain"))
   (unless (string=? (string-trim stdout) "")
     (git-revert! repo)))
+
+(define (git-push-branch! repo)
+  "Push the current branch to origin with upstream tracking."
+  (define branch (git-current-branch repo))
+  (shell! repo "git" "push" "-u" "origin" branch))
+
+;; ============================================================
+;; GitHub PR operations
+;; ============================================================
+
+(define (gh-create-and-merge-pr! repo mode-obj kept-tasks)
+  "Create a PR via gh and auto-merge it. kept-tasks is a list of task structs."
+  (define branch (git-current-branch repo))
+  (define title (format "~a: ~a" (mode-commit-prefix mode-obj) branch))
+  (define body
+    (string-append
+     "## Kept iterations\n\n"
+     (string-join
+      (for/list ([tsk (in-list (reverse kept-tasks))])
+        (format "- ~a" (task-description tsk)))
+      "\n")
+     "\n"))
+
+  ;; Create the PR
+  (define pr-url
+    (string-trim
+     (shell! repo "gh" "pr" "create"
+             "--title" title
+             "--body" body
+             "--head" branch
+             "--base" (repo-config-base-branch repo))))
+
+  (printf "PR created: ~a\n" pr-url)
+
+  ;; Attempt merge; on failure, rebase onto main and retry
+  (define (try-merge!)
+    (shell! repo "gh" "pr" "merge" "--merge" "--auto" "--delete-branch" pr-url))
+
+  (with-handlers
+    ([exn:fail?
+      (lambda (e)
+        (printf "Merge failed, attempting rebase onto ~a...\n"
+                (repo-config-base-branch repo))
+        (shell! repo "git" "fetch" "origin" (repo-config-base-branch repo))
+        (shell! repo "git" "rebase"
+                (format "origin/~a" (repo-config-base-branch repo)))
+        (shell! repo "git" "push" "--force-with-lease" "origin" branch)
+        (try-merge!))])
+    (try-merge!))
+
+  (printf "PR merge initiated: ~a\n" pr-url)
+  pr-url)
