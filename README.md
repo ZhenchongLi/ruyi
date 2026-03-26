@@ -4,7 +4,31 @@
 
 **Claude broke main again? Not with Ruyi.** Every AI change either commits clean or reverts completely — you review one PR, not a half-applied disaster.
 
-Ruyi runs Claude Code in a loop. Each iteration is atomic: pass tests? Committed. Fail? Gone, as if it never happened. No broken intermediate state, ever.
+The control loop is deterministic Racket, not an LLM — safety guarantees are code, not prompts. ~2,000 lines you can [read yourself](engine.rkt).
+
+```
+         ┌──────────┐
+         │ Pick task │
+         └────┬─────┘
+              ▼
+     ┌─────────────────┐
+     │ Claude writes    │
+     │ code / tests     │
+     └────────┬────────┘
+              ▼
+       ┌────────────┐
+       │ Run tests   │
+       └──┬──────┬──┘
+          │      │
+     Pass ▼      ▼ Fail
+   ┌──────────┐ ┌──────────┐
+   │git commit│ │git revert│
+   └──────────┘ └──────────┘
+          │      │
+          └──┬───┘
+             ▼
+        Next iteration
+```
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
 >
@@ -33,6 +57,30 @@ cd your-project          # any language, any framework
 ruyi init                # auto-detects everything, asks what you want
 ruyi                     # start evolving
 ```
+
+## Modes
+
+Describe your goal in plain English during `ruyi init` — Ruyi selects the right mode automatically.
+
+| Mode | You say | What happens |
+|------|---------|-------------|
+| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
+| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
+| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
+| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring (this README was written this way) |
+| `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
+| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
+
+## How it works
+
+Each iteration is atomic — **pass tests? `git commit`. Fail? `git revert`.** No broken intermediate state, ever.
+
+This is what separates Ruyi from "just run Claude in a loop":
+- **Atomic commit-or-revert** — every iteration either passes and commits, or reverts completely
+- Always works on a branch — never touches main
+- Enforces diff size limits (default 500 lines) — no runaway changes
+- Respects forbidden files — won't touch what you protect
+- You review one clean PR at the end
 
 ## What a run looks like
 
@@ -88,25 +136,25 @@ a3f9c21 test(session): add 14 tests for src/auth/session.ts
   ↑ failed attempts leave no trace
 ```
 
-## Battle-tested
+## Verified on real projects
 
 Every claim is verifiable — click the commits:
 
-- **This README** — written and iterated by Ruyi's `evolve-doc` mode. [26 iterations](evolution-log.tsv): 12 kept, 14 discarded. Every kept commit is a real diff you can inspect on GitHub:
+- **This README** — written and iterated by Ruyi's `evolve-doc` mode. [27 iterations](evolution-log.tsv): 13 kept, 14 discarded. Every kept commit is a real diff you can inspect on GitHub:
   - [`5044d5d`](https://github.com/ZhenchongLi/ruyi/commit/5044d5d) — first kept draft (score: 7.6)
   - [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) — biggest single jump (score: 8.7)
-  - [`3a6e730`](https://github.com/ZhenchongLi/ruyi/commit/3a6e730) — latest iteration (score: 8.4)
+  - [`f50d827`](https://github.com/ZhenchongLi/ruyi/commit/f50d827) — latest iteration (score: 8.6)
 - **Ruyi's own engine** — `coverage` mode writing tests for the core Racket modules ([iteration log](evolution-log.tsv))
-- **Try it yourself** — clone any public repo with tests, run `ruyi init`, and watch. The atomic guarantee works on any project with a test suite. Start with a small repo to see the commit-or-revert cycle in under a minute.
+- **Try it yourself** — clone any public repo with tests, run `ruyi init`, and watch. Start with a small repo to see the commit-or-revert cycle in under a minute.
 
 | Metric | Value |
 |--------|-------|
-| Total iterations logged | 26 |
-| Kept / Discarded | 12 / 14 |
+| Total iterations logged | 27 |
+| Kept / Discarded | 13 / 14 |
 | Score range (README) | 7.6 → 8.7 |
 | Broken main branches | 0 |
 
-Most AI output isn't good enough to ship. Ruyi's job is to keep only what passes.
+Most AI output isn't good enough to ship. Ruyi's atomic loop means bad output is automatically discarded — only what passes your tests survives.
 
 ## What does `init` look like?
 
@@ -139,30 +187,6 @@ Ready! Run:
 ```
 
 Zero config files to write. Ruyi detects your language, build tool, and test framework automatically. Works with TypeScript, Python, C#/.NET, Rust, Go, and Racket — if it has a `package.json`, `pyproject.toml`, `Cargo.toml`, or equivalent, Ruyi picks it up.
-
-## How it works
-
-Ruyi is a deterministic control loop that delegates creative work to Claude Code. Each iteration: pick a task, let Claude write code, run your tests. Pass? `git commit`. Fail? `git revert`. Next iteration.
-
-**Safety guarantees** — this is what separates Ruyi from "just run Claude in a loop":
-- **Atomic commit-or-revert** — every iteration either passes tests and commits, or reverts completely. No broken intermediate state, ever.
-- Always works on a branch — never touches main
-- Enforces diff size limits (default 500 lines) — no runaway changes
-- Respects forbidden files — won't touch what you protect
-- You review one clean PR at the end
-
-## Modes
-
-Describe your goal in plain English during `ruyi init` — Ruyi selects the right mode automatically.
-
-| Mode | You say | What happens |
-|------|---------|-------------|
-| `coverage` | "Improve test coverage" | Writes tests file-by-file, commits each passing test suite |
-| `issue` | "Fix GitHub issues" | Picks up open issues, implements + tests a fix per iteration |
-| `freestyle` | "Translate docs to Spanish" | Any goal — validated by your test suite each iteration |
-| `evolve-doc` | "Improve the README" | Iterates docs via LLM-as-Judge scoring (this README was written this way) |
-| `refactor` | "Refactor large files" | Simplifies one file at a time, build must pass |
-| `filesize` | "Break up large files" | Splits oversized files into modules + updates imports |
 
 <details>
 <summary>Why Racket?</summary>
