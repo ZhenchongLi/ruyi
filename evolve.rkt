@@ -3,7 +3,7 @@
 (module+ main
   (require racket/cmdline racket/string racket/format racket/path racket/file racket/list
            racket/runtime-path)
-  (require "config.rkt" "engine.rkt" "init.rkt" "git.rkt"
+  (require "config.rkt" "engine.rkt" "init.rkt" "git.rkt" "claude.rkt"
            "modes/coverage.rkt" "modes/filesize.rkt"
            "modes/issue.rkt" "modes/refactor.rkt"
            "modes/evolve-doc.rkt" "modes/freestyle.rkt")
@@ -28,37 +28,24 @@
     (displayln "
 Ruyi — as you wish
 
-Usage (run from your project directory with .ruyi.rkt):
-  ruyi init [path]                        Set up ruyi for a project
-  ruyi do <goal>                          Do something (worktree, can run many)
+Usage (run from your project directory):
+  ruyi do <goal>                          Do something (auto-inits if needed)
   ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
-  ruyi wrun <mode>                        Run a mode in worktree
-  ruyi <mode>                             Run a mode (local)
-  ruyi                                    Run default mode from .ruyi.rkt
-
-Legacy (specify repo config):
-  ruyi <repo> do <goal>                   Freestyle with configs/<repo>.rkt
-  ruyi <repo> <mode>                      Run mode with configs/<repo>.rkt
-
-Modes:  coverage, filesize, issue, refactor, evolve-doc
+  ruyi init [path]                        Manually init (usually not needed)
+  ruyi wrun <mode>                        Run a predefined mode in worktree
+  ruyi update                             Update ruyi to latest version
+  ruyi version                            Show version
 
 Examples:
   cd ~/my-project
-  ruyi init
   ruyi do \"add CLI support\"
-  ruyi do \"fix auth bug\"                  # run in another terminal, parallel!
-  ruyi pdo \"add tests\" // \"translate README\"
-  ruyi wrun coverage"))
+  ruyi do \"fix auth bug\"                  # another terminal, parallel!
+  ruyi pdo \"add tests\" // \"translate README\""))
 
   (define (load-local-config dir)
-    "Load repo-config from .ruyi.rkt in dir. Exits if not found."
+    "Load repo-config from .ruyi.rkt in dir. Auto-inits if missing."
+    (ruyi-ensure-init! dir)
     (define config-file (build-path dir ".ruyi.rkt"))
-    (unless (file-exists? config-file)
-      (printf "No .ruyi.rkt found in ~a\n\n" (path->string dir))
-      (displayln "Run 'ruyi init' first:")
-      (printf "  cd ~a\n" (path->string dir))
-      (displayln "  ruyi init")
-      (exit 1))
     (define config-module `(file ,(path->string config-file)))
     (dynamic-require config-module 'local-config))
 
@@ -74,6 +61,19 @@ Examples:
       (exit 1))
     (evolution-loop local-config (hash-ref all-modes mode-name)))
 
+  (define (suggest-next-mode dir kept)
+    "After a freestyle do, suggest running a predefined mode."
+    (when (> kept 0)
+      (printf "\nContinue with a mode?\n")
+      (printf "  coverage  — improve test coverage\n")
+      (printf "  refactor  — simplify large files\n")
+      (printf "  issue     — fix GitHub issues\n")
+      (printf "  filesize  — break up big files\n")
+      (define answer (read-line-interactive "\nMode (Enter to skip): "))
+      (when (and (not (string=? answer ""))
+                 (hash-has-key? all-modes answer))
+        (run-local-wrun dir answer))))
+
   (define (run-local-do dir goal)
     "Run freestyle evolution in worktree, using .ruyi.rkt from cwd."
     (define repo (load-local-config dir))
@@ -83,7 +83,8 @@ Examples:
     (define-values (branch kept pr-url)
       (evolution-loop/worktree repo fm))
     (printf "\nDone: ~a (kept ~a)\n" branch kept)
-    (when pr-url (printf "PR: ~a\n" pr-url)))
+    (when pr-url (printf "PR: ~a\n" pr-url))
+    (suggest-next-mode dir kept))
 
   (define (run-local-pdo dir goals)
     "Run multiple freestyle goals in parallel, using .ruyi.rkt from cwd."
