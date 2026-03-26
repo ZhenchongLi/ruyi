@@ -5,8 +5,41 @@
 **Tell Claude Code what you want. Ruyi loops it — commit on pass, revert on fail — until it's done. You review one clean PR.**
 
 > "Improve test coverage." Ruyi writes 14 tests across 6 files. Keeps the 11 that pass, reverts the 3 that don't. You review one clean diff.
+>
+> "Fix GitHub issues." Ruyi picks up open issues one by one, implements a fix, runs your test suite. Passing fix gets committed with the issue linked. Failing fix gets reverted. You wake up to closed issues and a single PR.
 
-Here's what that looks like — a real run, `coverage` mode on a TypeScript project:
+## Quick Start
+
+**Option A — clone and alias** (3 commands, nothing hidden):
+
+```bash
+brew install minimal-racket
+git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
+echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
+```
+
+**Option B — install script** ([read it first](https://github.com/ZhenchongLi/ruyi/blob/main/install.sh) — it just does the three steps above):
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
+```
+
+Then:
+
+```bash
+cd your-project          # any language, any framework
+ruyi init                # auto-detects everything, asks what you want
+ruyi                     # start evolving
+```
+
+## What a run looks like
+
+Here's a real `coverage` run on a TypeScript project — each iteration is independent, so a failure in iteration 2 doesn't affect the code committed in iteration 1:
+
+<img src="https://github.com/ZhenchongLi/ruyi/raw/main/assets/ruyi-demo.gif" alt="Terminal recording of a ruyi coverage run" width="600">
+
+<details>
+<summary>Text version (if the GIF doesn't load)</summary>
 
 ```
 $ ruyi
@@ -34,34 +67,11 @@ Result: keep (commit e82b4f0)
 === Done: 11 kept, 3 discarded, 6 skipped ===
 ```
 
-Every iteration either commits or reverts. No half-applied changes. No broken state.
-
-## Quick Start
-
-```bash
-# Install (one command — handles Racket dependency automatically)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
-
-# Run
-cd your-project          # any language, any framework
-ruyi init                # auto-detects everything, asks what you want
-ruyi                     # start evolving
-```
-
-<details>
-<summary>Manual install</summary>
-
-```bash
-brew install minimal-racket
-git clone https://github.com/ZhenchongLi/ruyi.git ~/ruyi
-echo 'alias ruyi="racket ~/ruyi/evolve.rkt"' >> ~/.zshrc && source ~/.zshrc
-```
-
 </details>
 
-## How it works
+Every iteration either commits or reverts. No half-applied changes. No broken state.
 
-The core loop is simple:
+## How it works
 
 ```
   your goal
@@ -153,16 +163,17 @@ Zero config files to write. Ruyi detects your language, build tool, and test fra
 
 This README was written by Ruyi. Its `evolve-doc` mode iterated against a quality rubric scored by an LLM judge — keeping versions that improved the score, discarding the rest:
 
-```
-2026-03-26T15:41  evolve-doc  Claude failed       discard  (first attempts)
-2026-03-26T16:40  evolve-doc  Claude failed       discard  (prompt tuning)
-2026-03-26T17:27  evolve-doc  Score 7.4 < 8.0     discard
-2026-03-26T17:29  evolve-doc  fe74537             keep     (score: 8.2)  ▲
-2026-03-26T17:36  evolve-doc  29a2513             keep     (score: 8.3)  ▲
-2026-03-26T17:47  evolve-doc  4cca522             keep     (score: 8.3)  ▲
-```
+| Time | Result | Score | Commit |
+|------|--------|-------|--------|
+| 15:41 | discard | Claude failed | — |
+| 16:40 | discard | Claude failed | — |
+| 17:27 | discard | 7.4 < 8.0 threshold | — |
+| 17:29 | **keep** | **8.2** ▲ | [`14e704e`](https://github.com/ZhenchongLi/ruyi/commit/14e704e) |
+| 17:36 | **keep** | **8.3** ▲ | [`f293c4d`](https://github.com/ZhenchongLi/ruyi/commit/f293c4d) |
+| 17:47 | **keep** | **8.3** ▲ | [`1d95151`](https://github.com/ZhenchongLi/ruyi/commit/1d95151) |
+| 17:50 | **keep** | **8.7** ▲ | [`eff19ab`](https://github.com/ZhenchongLi/ruyi/commit/eff19ab) |
 
-Score progression: failed → 7.4 → **8.2** → **8.3** → **8.3** (current). The full log — including all 20 iterations with their discards — is in [`evolution-log.tsv`](evolution-log.tsv). Every commit hash is real and inspectable via `git show`.
+Score progression: failed → 7.4 → **8.2** → **8.3** → **8.7** (current). 20 iterations total — 7 kept, 13 discarded. The full log is in [`evolution-log.tsv`](evolution-log.tsv). Every commit hash above links directly to the actual diff on GitHub.
 
 <details>
 <summary>Why Racket?</summary>
