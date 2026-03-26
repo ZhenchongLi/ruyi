@@ -1,0 +1,9 @@
+# Racket compiled files
+compiled/
+**/compiled/
+
+# Evolution logs (generated at runtime)
+evolution-log.tsv
+
+# OS
+.DS_Store
