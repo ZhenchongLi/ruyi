@@ -33,7 +33,8 @@ _ruyi_check_update &
 case "${1:-}" in
   update)
     echo "=== Updating Ruyi ==="
-    git -C "$RUYI_DIR" pull --ff-only origin main
+    git -C "$RUYI_DIR" fetch origin main --force 2>/dev/null
+    git -C "$RUYI_DIR" reset --hard origin/main
     echo "Compiling..."
     (cd "$RUYI_DIR" && raco make evolve.rkt 2>&1)
     echo "Updated to: $(git -C "$RUYI_DIR" log -1 --format='%h %s')"
