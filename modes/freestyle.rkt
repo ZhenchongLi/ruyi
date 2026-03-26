@@ -1,7 +1,7 @@
 #lang racket/base
 (require racket/string racket/format racket/file racket/path racket/list)
 (require "../config.rkt" "../tasks.rkt" "../claude.rkt")
-(provide freestyle-mode make-freestyle-mode)
+(provide make-freestyle-mode)
 
 ;; ============================================================
 ;; Freestyle mode: user says what they want, Claude implements
@@ -173,6 +173,3 @@
         freestyle-build-prompt
         "evolve/freestyle"
         "evolve(freestyle)"))
-
-;; Default instance (goal set at runtime)
-(define freestyle-mode (make-freestyle-mode "" #:clarify? #f))
