@@ -37,6 +37,9 @@ case "${1:-}" in
     git -C "$RUYI_DIR" reset --hard origin/main
     echo "Compiling..."
     (cd "$RUYI_DIR" && raco make evolve.rkt 2>&1)
+    # Sync /ruyi command for Claude Code
+    mkdir -p "$HOME/.claude/commands"
+    cp "$RUYI_DIR/commands/ruyi.md" "$HOME/.claude/commands/ruyi.md"
     echo "Updated to: $(git -C "$RUYI_DIR" log -1 --format='%h %s')"
     exit 0
     ;;

@@ -76,7 +76,13 @@ fi
 echo "Compiling..."
 (cd "$RUYI_HOME" && raco make evolve.rkt 2>&1)
 
-# 4. Link to PATH
+# 4. Install /ruyi command for Claude Code
+CLAUDE_CMD_DIR="$HOME/.claude/commands"
+mkdir -p "$CLAUDE_CMD_DIR"
+cp "$RUYI_HOME/commands/ruyi.md" "$CLAUDE_CMD_DIR/ruyi.md"
+echo "Installed /ruyi command for Claude Code"
+
+# 5. Link to PATH
 mkdir -p "$BIN_DIR"
 chmod +x "$RUYI_HOME/ruyi"
 ln -sf "$RUYI_HOME/ruyi" "$BIN_DIR/ruyi"
