@@ -194,35 +194,11 @@
 ;; Prompt for Claude Code to generate .ruyi-task
 ;; ============================================================
 
-(define (task-generation-prompt goal task-folder-path)
-  "Build prompt for Claude Code to generate task.rkt in the task folder."
+(define (task-generation-prompt goal task-folder-path ruyi-home)
+  "Build prompt for Claude Code to generate task.rkt."
+  (define format-file (build-path ruyi-home "RUYI-TASK-FORMAT.md"))
   (string-append
-   "Read the codebase and understand the project.\n\n"
    "The user wants: " goal "\n\n"
-   "Generate a task file at: " (path->string (task-file-in-folder task-folder-path))
-   "\n\nUse this exact S-expression format:\n\n"
-   "```\n"
-   "(ruyi-task\n"
-   "  (goal \"one sentence summary\")\n"
-   "  (validate #t or #f)           ;; run build/test? #t for code, #f for docs\n"
-   "  (max-revisions 2)             ;; review-revise rounds per subtask, 1-5\n"
-   "  (min-score 8)                 ;; minimum reviewer score to approve, 1-10\n"
-   "  (max-diff 500)                ;; max diff lines per subtask\n"
-   "  (reviewer-model \"sonnet\")     ;; which model reviews\n"
-   "  (auto-merge #t)               ;; auto-merge PR when done\n"
-   "  (forbidden (\"file1\" \"file2\")) ;; files not to modify, or ()\n"
-   "  (context (\"file1\" \"file2\"))   ;; reference files for implementer, or ()\n"
-   "  (judgement \"review criteria\")  ;; custom criteria for reviewer\n"
-   "  (subtasks\n"
-   "    (\"first subtask description\")\n"
-   "    (\"second subtask description\")\n"
-   "    (\"third subtask description\")))\n"
-   "```\n\n"
-   "Rules:\n"
-   "- Read the project first to understand structure and conventions\n"
-   "- Break the goal into 3-7 small, independent subtasks\n"
-   "- Order subtasks by dependency\n"
-   "- Each subtask should be completable in one commit\n"
-   "- Respect the user's explicit constraints in their goal\n"
-   "- Write the file to the path specified above\n"
-   "- Output ONLY the file, nothing else\n"))
+   "Read the format spec at: " (path->string format-file) "\n"
+   "Then read this project's codebase.\n"
+   "Generate the task file at: " (path->string (task-file-in-folder task-folder-path)) "\n"))
