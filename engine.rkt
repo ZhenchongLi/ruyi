@@ -195,7 +195,8 @@
   (define min-score    (task-param tsk 'min-score 8))
   (define max-diff     (task-param tsk 'max-diff 500))
   (define rev-model    (task-param tsk 'reviewer-model "sonnet"))
-  (define skip-valid?  (task-param tsk 'skip-validation #f))
+  (define build-cmds   (task-param tsk 'build-commands '()))
+  (define test-cmds    (task-param tsk 'test-commands '()))
 
   (with-handlers
     ([exn:fail?
@@ -234,14 +235,16 @@
                 (format "Diff too large: ~a > ~a" diff-lines max-diff)
                 (current-continuation-marks))))
 
-      ;; 4. Optional build/test validation
-      (unless skip-valid?
-        (define validation (run-validation-gate repo))
-        (unless (validation-result-passed? validation)
+      ;; 4. Run build/test commands from task (if any)
+      (define all-cmds (append build-cmds test-cmds))
+      (for ([cmd-str (in-list all-cmds)])
+        (printf "  Run: ~a\n" cmd-str)
+        (define-values (code stdout stderr)
+          (shell-in-dir (repo-config-path repo) "/bin/bash" "-c" cmd-str))
+        (unless (zero? code)
           (git-revert! repo)
           (raise (make-exn:fail
-                  (format "Validation failed: ~a"
-                          (validation-result-failed-step validation))
+                  (format "Command failed: ~a\n~a" cmd-str stderr)
                   (current-continuation-marks)))))
 
       ;; 5. Agent B reviews (independent, sees only diff + task)
@@ -485,7 +488,8 @@
                 (make-immutable-hash
                  (list (cons 'goal next)
                        (cons 'overview (ruyi-task-goal rtask))
-                       (cons 'skip-validation (not (ruyi-task-validate? rtask)))
+                       (cons 'build-commands (ruyi-task-build rtask))
+                       (cons 'test-commands (ruyi-task-test rtask))
                        (cons 'max-revisions (ruyi-task-max-revisions rtask))
                        (cons 'min-score (ruyi-task-min-score rtask))
                        (cons 'max-diff (ruyi-task-max-diff rtask))

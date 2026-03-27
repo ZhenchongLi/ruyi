@@ -9,7 +9,8 @@ The task file uses Racket S-expression syntax. Write it to the path specified by
 ```racket
 (ruyi-task
   (goal "one sentence summary of what to do")
-  (validate #t)              ;; #t = run build/test after each subtask, #f = skip
+  (build ("pnpm build" "other build cmd"))  ;; build commands, or () to skip
+  (test ("pnpm test" "pnpm lint"))          ;; test commands, or () to skip
   (max-revisions 2)          ;; review-revise rounds per subtask (1-5)
   (min-score 8)              ;; minimum reviewer score to approve (1-10)
   (max-diff 500)             ;; max diff lines per subtask
@@ -28,11 +29,12 @@ The task file uses Racket S-expression syntax. Write it to the path specified by
 ## Rules for generating
 
 - Read the project first to understand structure, language, and conventions
+- **Detect build/test commands** from the project: check CI configs (.github/workflows/), Makefile, package.json scripts, Cargo.toml, pyproject.toml, etc. Set `build` and `test` accordingly.
+- Set `build` and `test` to `()` for non-code tasks (docs, config, research)
 - Break the goal into 3-7 small, independent subtasks
 - Order subtasks by dependency (do first things first)
 - Each subtask should be completable in a single commit
 - Respect the user's explicit constraints in their goal description
-- Set `validate` to `#f` for docs/config-only tasks
 - Set higher `min-score` (9-10) when user asks for strict review
 - Set lower `max-diff` when user asks for small changes
 - Use `forbidden` to protect files the user mentions

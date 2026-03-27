@@ -11,7 +11,8 @@
 
 (struct ruyi-task
   (goal           ; string
-   validate?      ; boolean: run build/test?
+   build          ; (listof string): build commands, or () to skip
+   test           ; (listof string): test commands, or () to skip
    max-revisions  ; integer: review-revise rounds per subtask
    min-score      ; integer: reviewer threshold
    max-diff       ; integer: max diff lines per subtask
@@ -25,7 +26,7 @@
   #:transparent)
 
 (define DEFAULT-TASK
-  (ruyi-task "" #t 2 8 500 "sonnet" #t #t '() '() "" '()))
+  (ruyi-task "" '() '() 2 8 500 "sonnet" #t #t '() '() "" '()))
 
 ;; ============================================================
 ;; Read .ruyi-task (S-expression format)
@@ -54,13 +55,14 @@
 
   (ruyi-task
    (or (get 'goal) "")
-   (let ([v (get 'validate)]) (if (eq? v #f) #t v))  ; default #t
+   (get-list 'build)              ; build commands
+   (get-list 'test)               ; test commands
    (or (get 'max-revisions) 2)
    (or (get 'min-score) 8)
    (or (get 'max-diff) 500)
    (or (get 'reviewer-model) "sonnet")
-   (let ([v (get 'auto-merge)]) (if (eq? v #f) #t v))  ; default #t
-   (let ([v (get 'track)]) (if (eq? v #f) #t v))  ; default #t
+   (let ([v (get 'auto-merge)]) (if (eq? v #f) #t v))
+   (let ([v (get 'track)]) (if (eq? v #f) #t v))
    (get-list 'forbidden)
    (get-list 'context)
    (or (get 'judgement) "")
@@ -78,7 +80,8 @@
       (fprintf out ";; Edit freely. Re-run with: ruyi do\n\n")
       (fprintf out "(ruyi-task\n")
       (fprintf out "  (goal ~s)\n" (ruyi-task-goal task))
-      (fprintf out "  (validate ~a)\n" (if (ruyi-task-validate? task) "#t" "#f"))
+      (fprintf out "  (build ~s)\n" (ruyi-task-build task))
+      (fprintf out "  (test ~s)\n" (ruyi-task-test task))
       (fprintf out "  (max-revisions ~a)\n" (ruyi-task-max-revisions task))
       (fprintf out "  (min-score ~a)\n" (ruyi-task-min-score task))
       (fprintf out "  (max-diff ~a)\n" (ruyi-task-max-diff task))
@@ -98,8 +101,11 @@
 (define (print-ruyi-task task)
   "Print a human-readable summary of the task."
   (printf "\nGoal: ~a\n" (ruyi-task-goal task))
-  (printf "Validate: ~a | Revisions: ~a | Min score: ~a | Max diff: ~a\n"
-          (if (ruyi-task-validate? task) "yes" "no")
+  (when (not (null? (ruyi-task-build task)))
+    (printf "Build: ~a\n" (string-join (ruyi-task-build task) " && ")))
+  (when (not (null? (ruyi-task-test task)))
+    (printf "Test: ~a\n" (string-join (ruyi-task-test task) " && ")))
+  (printf "Revisions: ~a | Min score: ~a | Max diff: ~a\n"
           (ruyi-task-max-revisions task)
           (ruyi-task-min-score task)
           (ruyi-task-max-diff task))
