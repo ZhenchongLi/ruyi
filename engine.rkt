@@ -259,31 +259,29 @@
                         #:model rev-model
                         #:judgement judgement))
 
-      ;; 6. Ruyi decides (thresholds from task spec)
-      (define revise-threshold (max 1 (- min-score 2)))  ; e.g. min-score 8 → revise at 6+
-
+      ;; 6. Ruyi decides
       (cond
-        ;; Approved
+        ;; Approved: meets min-score
         [(>= score min-score)
          (define hash (git-commit! repo mode-obj tsk))
          (iteration-result 'keep (format "~a (score: ~a)" hash score))]
 
-        ;; Needs revision
-        [(and (>= score revise-threshold) (< attempt max-revs))
-         (printf "  Score ~a < ~a — revising...\n" score min-score)
+        ;; Below min-score, attempts left: revise with feedback
+        [(< attempt max-revs)
+         (printf "  Score ~a < ~a — revising with feedback...\n" score min-score)
          (git-revert! repo)
          (define reformulated (format-feedback-for-implementer issues suggestions))
          (revise-loop (add1 attempt) reformulated)]
 
-        ;; Max attempts, decent score: best effort
-        [(and (>= score revise-threshold) (>= attempt max-revs))
+        ;; Max attempts, score >= 5: commit best effort
+        [(>= score 5)
          (printf "  Score ~a — max revisions, committing best effort\n" score)
          (define hash (git-commit! repo mode-obj tsk))
          (iteration-result 'keep (format "~a (score: ~a, best-effort)" hash score))]
 
-        ;; Rejected
+        ;; Truly bad after all attempts
         [else
-         (printf "  Score ~a — rejected\n" score)
+         (printf "  Score ~a — rejected after ~a attempts\n" score attempt)
          (git-revert! repo)
          (iteration-result 'discard (format "Rejected (score: ~a)" score))]))))
 
