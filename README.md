@@ -65,43 +65,31 @@ The Racket engine controls every step. Claude never decides whether to commit or
 
 ## Install
 
-You need [Claude Code](https://claude.ai/code). Tell it:
+Prerequisites: [Claude Code](https://claude.ai/code) and Git.
 
-```
-Install ruyi: clone git@github.outlook:ZhenchongLi/ruyi.git to ~/.ruyi,
-install dependencies (git, gh, racket) if missing, run "cd ~/.ruyi && raco make evolve.rkt",
-then link ~/.ruyi/ruyi to ~/.local/bin/ruyi and make sure ~/.local/bin is in my PATH.
-```
-
-Or run directly:
+**One-liner** (like oh-my-zsh):
 
 ```bash
-bash ~/.ruyi/install.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
+```
+
+Or manually:
+
+```bash
+git clone https://github.com/ZhenchongLi/ruyi.git ~/.ruyi && ~/.ruyi/install.sh
 ```
 
 Ruyi auto-checks for updates. Run `ruyi update` to pull latest.
 
 <details>
-<summary>Manual install</summary>
+<summary>What the installer does</summary>
 
-**macOS:**
-```bash
-brew install minimal-racket gh
-git clone git@github.outlook:ZhenchongLi/ruyi.git ~/.ruyi
-cd ~/.ruyi && raco make evolve.rkt
-mkdir -p ~/.local/bin && ln -sf ~/.ruyi/ruyi ~/.local/bin/ruyi
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get install racket
-# install gh: https://cli.github.com/
-git clone git@github.outlook:ZhenchongLi/ruyi.git ~/.ruyi
-cd ~/.ruyi && raco make evolve.rkt
-mkdir -p ~/.local/bin && ln -sf ~/.ruyi/ruyi ~/.local/bin/ruyi
-```
-
-Add `~/.local/bin` to PATH if not already there.
+1. Installs `racket` if missing (via brew/apt)
+2. Installs `gh` if missing (optional, for GitHub issue support)
+3. Clones to `~/.ruyi`
+4. Compiles with `raco make`
+5. Links `~/.ruyi/ruyi` to `~/.local/bin/ruyi`
+6. Adds `~/.local/bin` to PATH if needed
 
 </details>
 

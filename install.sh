@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage: paste the prompt from INSTALL.md into Claude Code
 
 RUYI_HOME="${RUYI_HOME:-$HOME/.ruyi}"
-RUYI_REPO="git@github.outlook:ZhenchongLi/ruyi.git"
+RUYI_REPO="https://github.com/ZhenchongLi/ruyi.git"
 BIN_DIR="$HOME/.local/bin"
 
 echo "=== Ruyi Installer ==="

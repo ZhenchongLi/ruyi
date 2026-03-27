@@ -65,43 +65,31 @@ Racket 引擎控制每一个步骤。Claude 不会决定是提交还是回滚—
 
 ## 安装
 
-你需要先安装 [Claude Code](https://claude.ai/code)。然后告诉它：
+前置条件：[Claude Code](https://claude.ai/code) 和 Git。
 
-```
-Install ruyi: clone git@github.outlook:ZhenchongLi/ruyi.git to ~/.ruyi,
-install dependencies (git, gh, racket) if missing, run "cd ~/.ruyi && raco make evolve.rkt",
-then link ~/.ruyi/ruyi to ~/.local/bin/ruyi and make sure ~/.local/bin is in my PATH.
-```
-
-或者直接运行：
+**一行安装**（类似 oh-my-zsh）：
 
 ```bash
-bash ~/.ruyi/install.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
+```
+
+或手动：
+
+```bash
+git clone https://github.com/ZhenchongLi/ruyi.git ~/.ruyi && ~/.ruyi/install.sh
 ```
 
 Ruyi 会自动检查更新。运行 `ruyi update` 获取最新版本。
 
 <details>
-<summary>手动安装</summary>
+<summary>安装脚本做了什么</summary>
 
-**macOS:**
-```bash
-brew install minimal-racket gh
-git clone git@github.outlook:ZhenchongLi/ruyi.git ~/.ruyi
-cd ~/.ruyi && raco make evolve.rkt
-mkdir -p ~/.local/bin && ln -sf ~/.ruyi/ruyi ~/.local/bin/ruyi
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get install racket
-# 安装 gh: https://cli.github.com/
-git clone git@github.outlook:ZhenchongLi/ruyi.git ~/.ruyi
-cd ~/.ruyi && raco make evolve.rkt
-mkdir -p ~/.local/bin && ln -sf ~/.ruyi/ruyi ~/.local/bin/ruyi
-```
-
-如果 `~/.local/bin` 不在 PATH 中，请手动添加。
+1. 安装 `racket`（如果没有，通过 brew/apt）
+2. 安装 `gh`（可选，用于 GitHub issue 支持）
+3. Clone 到 `~/.ruyi`
+4. 编译 `raco make`
+5. 链接 `~/.ruyi/ruyi` 到 `~/.local/bin/ruyi`
+6. 如需要，将 `~/.local/bin` 加入 PATH
 
 </details>
 
