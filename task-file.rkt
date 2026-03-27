@@ -43,45 +43,50 @@
   (unless (and (pair? expr) (eq? (car expr) 'ruyi-task))
     (error 'parse-ruyi-task "Expected (ruyi-task ...), got: ~a" expr))
   (define fields (cdr expr))
-  (define (get key [default #f])
+  (define MISSING (gensym 'missing))
+  (define (get key [default MISSING])
     (define pair (assq key fields))
     (if pair (cadr pair) default))
+  (define (get-bool key default)
+    "Get a boolean field. Distinguishes missing from explicit #f."
+    (define v (get key))
+    (if (eq? v MISSING) default v))
   (define (get-list key)
     "Get a list field. Handles both (key (a b c)) and (key (a) (b) (c)) forms."
     (define pair (assq key fields))
     (if pair
         (let ([rest (cdr pair)])
           (cond
+            [(null? rest) '()]
+            ;; (key ()) — explicit empty list
+            [(and (= (length rest) 1) (null? (car rest)))
+             '()]
             ;; (key ("a") ("b") ("c")) — multiple sub-elements
-            [(and (not (null? rest))
-                  (pair? (car rest))
+            [(and (pair? (car rest))
                   (> (length rest) 1))
              (map (lambda (item)
                     (if (pair? item) (car item) item))
                   rest)]
             ;; (key ("a" "b" "c")) — single list
-            [(and (not (null? rest))
-                  (pair? (car rest)))
+            [(pair? (car rest))
              (car rest)]
             ;; (key "a") — single value
-            [(not (null? rest))
-             (list (car rest))]
-            [else '()]))
+            [else (list (car rest))]))
         '()))
 
   (ruyi-task
-   (or (get 'goal) "")
-   (get-list 'build)              ; build commands
-   (get-list 'test)               ; test commands
-   (or (get 'max-revisions) 2)
-   (or (get 'min-score) 8)
-   (or (get 'max-diff) 500)
-   (or (get 'reviewer-model) "sonnet")
-   (let ([v (get 'auto-merge)]) (if (eq? v #f) #t v))
-   (let ([v (get 'track)]) (if (eq? v #f) #t v))
+   (let ([v (get 'goal)]) (if (eq? v MISSING) "" v))
+   (get-list 'build)
+   (get-list 'test)
+   (let ([v (get 'max-revisions)]) (if (eq? v MISSING) 2 v))
+   (let ([v (get 'min-score)]) (if (eq? v MISSING) 8 v))
+   (let ([v (get 'max-diff)]) (if (eq? v MISSING) 500 v))
+   (let ([v (get 'reviewer-model)]) (if (eq? v MISSING) "sonnet" v))
+   (get-bool 'auto-merge #t)
+   (get-bool 'track #t)
    (get-list 'forbidden)
    (get-list 'context)
-   (or (get 'judgement) "")
+   (let ([v (get 'judgement)]) (if (eq? v MISSING) "" v))
    (get-list 'subtasks)))
 
 ;; ============================================================

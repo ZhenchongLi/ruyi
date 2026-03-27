@@ -55,8 +55,8 @@
       (display "(ruyi-task\n  (goal \"test\")\n  (auto-merge #f)\n  (track #f))\n" out))
     #:exists 'replace)
   (define task (read-ruyi-task tmp))
-  (check-equal? (ruyi-task-auto-merge? task) #t) ; BUG: should be #f
-  (check-equal? (ruyi-task-track? task) #t)       ; BUG: should be #f
+  (check-equal? (ruyi-task-auto-merge? task) #f)
+  (check-equal? (ruyi-task-track? task) #f)
   (delete-file tmp))
 
 (test-case "read-ruyi-task uses defaults for missing fields"
