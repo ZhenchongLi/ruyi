@@ -47,10 +47,26 @@
     (define pair (assq key fields))
     (if pair (cadr pair) default))
   (define (get-list key)
+    "Get a list field. Handles both (key (a b c)) and (key (a) (b) (c)) forms."
     (define pair (assq key fields))
     (if pair
-        (let ([val (cadr pair)])
-          (if (list? val) val (list val)))
+        (let ([rest (cdr pair)])
+          (cond
+            ;; (key ("a") ("b") ("c")) — multiple sub-elements
+            [(and (not (null? rest))
+                  (pair? (car rest))
+                  (> (length rest) 1))
+             (map (lambda (item)
+                    (if (pair? item) (car item) item))
+                  rest)]
+            ;; (key ("a" "b" "c")) — single list
+            [(and (not (null? rest))
+                  (pair? (car rest)))
+             (car rest)]
+            ;; (key "a") — single value
+            [(not (null? rest))
+             (list (car rest))]
+            [else '()]))
         '()))
 
   (ruyi-task
