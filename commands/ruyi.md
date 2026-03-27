@@ -12,14 +12,8 @@ Your sole purpose is to help the user articulate:
 ## Steps
 
 1. Read ~/.ruyi/RUYI-TASK-FORMAT.md to understand the format
-2. Read the project's codebase to understand context — pay attention to:
-   - Language and build system (Racket/raco, TypeScript/tsc, Python/pytest, etc.)
-   - Existing test setup and CI config
-   - Code conventions and project structure
-3. Propose a **goal** and **judgement** to the user. The judgement MUST include project-specific criteria:
-   - Compilation/build must pass (e.g. "raco make compiles clean" for Racket, "tsc --noEmit passes" for TS)
-   - Existing tests must not break (e.g. "raco test tests/ passes", "pytest passes")
-   - Any project-specific quality gates from CI or linting
+2. Read the project's codebase to understand context
+3. Propose a **goal** and **judgement** to the user
 4. Discuss until the user confirms — this is the most important step
 5. Create the task folder and write task.rkt:
 
