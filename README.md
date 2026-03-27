@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
 
+[中文文档](README.zh-CN.md)
+
 **Tell Claude what you want. Ruyi makes sure only clean changes ship.**
 
 Every AI change either commits clean or reverts completely — you review one PR, not a half-applied disaster. The safety contract is code, not prompts.
