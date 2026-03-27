@@ -73,7 +73,7 @@ Examples:
     "Main do flow: plan → execute."
     (define-values (folder task)
       (cond
-        ;; No goal → re-run latest task
+        ;; No goal → re-run latest task as new goal
         [(not goal)
          (define latest (latest-task-dir dir))
          (unless latest
@@ -82,23 +82,8 @@ Examples:
            (exit 1))
          (printf "Re-running: ~a\n" (path->string (file-name-from-path latest)))
          (define tf (task-file-in-folder latest))
-         ;; Migrate old format if needed
-         (when (task-file-needs-migration? tf)
-           (printf "Old task format detected — migrating...\n")
-           (define repo (ensure-project dir))
-           (define ruyi-home (path->string (simplify-path (expand-user-path "~/.ruyi"))))
-           (define format-file (build-path ruyi-home "RUYI-TASK-FORMAT.md"))
-           (define migrate-prompt
-             (string-append
-              "This task file uses an old format. Rewrite it to the new format.\n\n"
-              "Old file at: " (path->string tf) "\n"
-              "New format spec at: " (path->string format-file) "\n\n"
-              "Read the old file, understand the goal and subtasks, then rewrite it in-place "
-              "with just 4 fields: goal, judgement, max-revisions, min-score.\n"
-              "Combine the subtasks into a single clear goal. "
-              "Write a thorough judgement based on what the old file was trying to achieve.\n"))
-           (claude-agent (repo-config-path repo) migrate-prompt))
-         (values latest (read-ruyi-task tf))]
+         (define old-content (file->string tf))
+         (generate-task-file dir old-content)]
         ;; Goal given → generate new task
         [else
          (generate-task-file dir goal)]))

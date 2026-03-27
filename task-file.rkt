@@ -28,16 +28,6 @@
   (define expr (with-input-from-string content read))
   (parse-ruyi-task-expr expr))
 
-(define (task-file-needs-migration? path)
-  "Check if a task file uses the old format (has subtasks, build, test, etc.)."
-  (define content (file->string path))
-  (define expr (with-input-from-string content read))
-  (define fields (if (and (pair? expr) (eq? (car expr) 'ruyi-task)) (cdr expr) '()))
-  (ormap (lambda (f) (and (pair? f) (memq (car f) '(subtasks build test max-diff
-                                                      reviewer-model auto-merge track
-                                                      forbidden context))))
-         fields))
-
 (define (parse-ruyi-task-expr expr)
   "Parse (ruyi-task (field value) ...) into struct."
   (unless (and (pair? expr) (eq? (car expr) 'ruyi-task))
