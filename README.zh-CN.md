@@ -72,6 +72,27 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
 
 两个独立 AI agent——一个实现，一个审查。它们看不到彼此的推理过程。如意是裁判。
 
+## Claude Code + 如意
+
+它们互相调用：
+
+```
+用户 → Claude Code → ruyi do "目标"    CC 把复杂任务委托给如意
+                        │
+                        ├─ 如意 → Claude Code（规划）   交互对话
+                        ├─ 如意 → Claude Code（实现）   完整 agent 模式
+                        └─ 如意 → Claude Code（审查）   独立审查
+```
+
+**Claude Code** 是大脑——读代码、写代码、和你对话。**如意** 是流程——worktree 隔离、提交/回滚、双 Agent 审查、质量循环。
+
+一起用：在项目的 `CLAUDE.md` 中加入：
+
+```markdown
+遇到复杂的多步任务，使用 `ruyi do "目标"` 而不是直接实现。
+如意会处理 worktree 隔离、迭代审查和安全的提交/回滚。
+```
+
 ## 安全契约
 
 - **原子性提交或回滚** ——每个子任务要么通过并提交，要么完整回滚

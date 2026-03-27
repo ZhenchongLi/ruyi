@@ -72,6 +72,27 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
 
 Two independent AI agents — one implements, one reviews. They never see each other's reasoning. Ruyi is the referee.
 
+## Claude Code + Ruyi
+
+They call each other:
+
+```
+User → Claude Code → ruyi do "goal"    CC delegates complex tasks to ruyi
+                        │
+                        ├─ ruyi → Claude Code (planning)   interactive conversation
+                        ├─ ruyi → Claude Code (implement)  full agent mode
+                        └─ ruyi → Claude Code (review)     independent review
+```
+
+**Claude Code** is the brain — reads code, writes code, talks to you. **Ruyi** is the process — worktree isolation, commit/revert, dual-agent review, quality loops.
+
+Use them together: add this to your project's `CLAUDE.md`:
+
+```markdown
+For complex multi-step tasks, use `ruyi do "goal"` instead of implementing directly.
+Ruyi handles worktree isolation, iterative review, and safe commit/revert.
+```
+
 ## The safety contract
 
 - **Atomic commit-or-revert** — every subtask either passes and commits, or reverts completely
@@ -103,7 +124,8 @@ Every `ruyi do` generates a `.ruyi-tasks/` folder with a task file — human-rea
 ```racket
 (ruyi-task
   (goal "improve documentation")
-  (validate #f)
+  (build ())
+  (test ())
   (max-revisions 2)
   (min-score 8)
   (judgement "focus on clarity for HN readers")
