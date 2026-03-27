@@ -22,6 +22,7 @@ Usage (run from your project directory):
   ruyi do @file.md                        Read goal from file
   ruyi do #123                            Do a GitHub issue
   ruyi do #123 \"extra context\"            Issue + additional instructions
+  ruyi do .ruyi-tasks/<folder>            Execute an existing task directly
   ruyi do                                 Re-run latest task
   ruyi tasks                              List all tasks
   ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
@@ -82,6 +83,15 @@ Examples:
            (exit 1))
          (printf "Running: ~a\n" (path->string (file-name-from-path latest)))
          (values latest (read-ruyi-task (task-file-in-folder latest)))]
+        ;; Goal is a path to an existing task folder → execute directly
+        [(let ([p (string->path goal)])
+           (and (directory-exists? p)
+                (file-exists? (task-file-in-folder p))
+                p))
+         => (lambda (p)
+              (define abs-p (path->complete-path p))
+              (printf "Running: ~a\n" (path->string (file-name-from-path abs-p)))
+              (values abs-p (read-ruyi-task (task-file-in-folder abs-p))))]
         ;; Goal given → generate new task
         [else
          (generate-task-file dir goal)]))
