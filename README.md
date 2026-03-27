@@ -107,11 +107,16 @@ Add `~/.local/bin` to PATH if not already there.
 
 ```bash
 ruyi do "goal"                   # do something — the main command
+ruyi do @file.md                 # read goal from file
+ruyi do #123                     # do a GitHub issue
+ruyi do #123 "extra context"     # issue + additional instructions
+ruyi do                          # re-run latest task
+ruyi tasks                       # list all tasks
 ruyi pdo "X" // "Y" // "Z"      # do multiple things in parallel
-ruyi run my-mode                 # re-run a saved mode
 ruyi modes                       # list saved modes
 ruyi import mode.txt             # import a mode from file
-ruyi init                        # manually init (usually auto)
+ruyi clean                       # remove ruyi-generated files
+ruyi init [path]                 # manually init project (usually auto)
 ruyi update                      # update ruyi
 ruyi version                     # show version
 ```
