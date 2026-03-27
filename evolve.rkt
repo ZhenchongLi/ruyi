@@ -73,17 +73,15 @@ Examples:
     "Main do flow: plan → execute."
     (define-values (folder task)
       (cond
-        ;; No goal → re-run latest task as new goal
+        ;; No goal → execute latest task directly (skip prepare)
         [(not goal)
          (define latest (latest-task-dir dir))
          (unless latest
            (eprintf "No goal and no existing tasks.\n")
            (print-usage)
            (exit 1))
-         (printf "Re-running: ~a\n" (path->string (file-name-from-path latest)))
-         (define tf (task-file-in-folder latest))
-         (define old-content (file->string tf))
-         (generate-task-file dir old-content)]
+         (printf "Running: ~a\n" (path->string (file-name-from-path latest)))
+         (values latest (read-ruyi-task (task-file-in-folder latest)))]
         ;; Goal given → generate new task
         [else
          (generate-task-file dir goal)]))
