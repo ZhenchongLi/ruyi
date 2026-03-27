@@ -177,6 +177,11 @@ Examples:
             [(regexp-match #rx"^#([0-9]+)" raw-goal)
              => (lambda (m)
                   (define issue-num (second m))
+                  ;; Check if gh is available
+                  (unless (find-executable-path "gh")
+                    (eprintf "GitHub CLI (gh) is required for #issue support.\n")
+                    (eprintf "Install: https://cli.github.com/\n")
+                    (exit 1))
                   (printf "Fetching issue #~a...\n" issue-num)
                   (define issue-text
                     (with-handlers ([exn:fail?
