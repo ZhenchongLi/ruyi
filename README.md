@@ -4,9 +4,11 @@
 
 [中文文档](README.zh-CN.md)
 
-**As you wish.** Autonomous implement-review loops for any task — not just code.
+**心想事成。**
 
-Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch). The insight: real work happens in loops, not one-shot generation. Ruyi takes the battle-tested software development pattern — implement, review, revise, ship — and makes it work for **everything**: code, docs, research, translation, planning, anything you can describe.
+The hardest part of any task isn't doing it — it's knowing exactly what "done" looks like. Ruyi helps you define what you really want through an interactive conversation with AI, including how to judge if it's good enough. Then it takes over: autonomous implement-review loops until your definition of "done" is met.
+
+Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) and the software development pattern of implement-review-ship — generalized to **any task**.
 
 ## What it does
 
