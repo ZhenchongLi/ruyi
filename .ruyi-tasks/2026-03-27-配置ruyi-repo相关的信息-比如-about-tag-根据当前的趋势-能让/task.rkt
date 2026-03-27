@@ -1,0 +1,17 @@
+(ruyi-task
+  (goal "配置 ruyi GitHub repo 的 About、topics、homepage 等元数据，提升外部搜索引擎和 GitHub Explore 的可发现性")
+  (validate #f)
+  (max-revisions 2)
+  (min-score 8)
+  (max-diff 300)
+  (reviewer-model "sonnet")
+  (auto-merge #t)
+  (track #t)
+  (forbidden ())
+  (context ("README.md" "README.zh-CN.md"))
+  (judgement "每个配置项都应准确反映 ruyi 的核心定位：autonomous dual-agent implement-review loop powered by Claude Code。topics 需覆盖主流搜索关键词且不冗余。description 简洁有力，一句话让人知道 ruyi 是什么、为什么用它")
+  (subtasks
+    ("用 gh repo edit 设置 repo description — 一句英文概括 ruyi：autonomous implement-review loops for any task, powered by Claude Code。要简洁、有搜索关键词密度")
+    ("用 gh repo edit 添加 10-15 个 GitHub topics — 覆盖：ai-agent, autonomous-agent, claude-code, llm, agentic-ai, code-review, task-automation, racket, developer-tools, ai-coding-assistant, dual-agent, implement-review, vibe-coding 等当前高热度关键词")
+    ("用 gh repo edit 设置 homepage URL 指向 README 中最有价值的入口（如 repo URL 本身或 INSTALL-PROMPT.md 的 raw link）")
+    ("在 .github/ 下创建 FUNDING.yml（如适用）和一份简短的 repo 级 description metadata，确保 GitHub 社交预览卡片信息完整")))
