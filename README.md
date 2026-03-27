@@ -6,7 +6,7 @@
 
 **心想事成。**
 
-The hardest part of any task isn't doing it — it's knowing exactly what "done" looks like. Ruyi helps you define what you really want through an interactive conversation with AI, including how to judge if it's good enough. Then it takes over: autonomous implement-review loops until your definition of "done" is met.
+The hardest part of any task isn't doing it — it's knowing exactly what "done" looks like. Ruyi helps you define what you really want through an interactive conversation with [Claude Code](https://claude.ai/code), including how to judge if it's good enough. Then it takes over: autonomous implement-review loops until your definition of "done" is met.
 
 Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) and the software development pattern of implement-review-ship — generalized to **any task**.
 
