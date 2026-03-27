@@ -233,79 +233,89 @@
 
       (define diff-lines (git-diff-line-count repo))
       (printf "  Diff: ~a lines\n" diff-lines)
-      (when (> diff-lines max-diff)
-        (git-revert! repo)
-        (raise (make-exn:fail
-                (format "Diff too large: ~a > ~a" diff-lines max-diff)
-                (current-continuation-marks))))
+      (if (> diff-lines max-diff)
+          ;; 3b. Diff too large: revise or reject (like build failure)
+          (cond
+            [(< attempt max-revs)
+             (printf "  Diff too large (~a > ~a) — revising...\n" diff-lines max-diff)
+             (git-revert! repo)
+             (revise-loop (add1 attempt)
+                          (format "Your diff was ~a lines but the limit is ~a. Rewrite with fewer changes — focus on the most essential parts of the task."
+                                  diff-lines max-diff))]
+            [else
+             (printf "  Diff too large (~a > ~a) after ~a attempts — rejected\n"
+                     diff-lines max-diff attempt)
+             (git-revert! repo)
+             (iteration-result 'discard (format "Diff too large: ~a > ~a" diff-lines max-diff))])
 
-      ;; 4. Run build/test commands from task (if any)
-      (define build-error
-        (let/ec escape
-          (define all-cmds (append build-cmds test-cmds))
-          (for ([cmd-str (in-list all-cmds)])
-            (printf "  Run: ~a\n" cmd-str)
-            (define-values (code stdout stderr)
-              (shell-in-dir (repo-config-path repo) "/bin/bash" "-c" cmd-str))
-            (unless (zero? code)
-              (escape (format "Command failed: ~a\n~a" cmd-str stderr))))
-          #f))  ; no error
+          (let ()
+            ;; 4. Run build/test commands from task (if any)
+            (define build-error
+              (let/ec escape
+                (define all-cmds (append build-cmds test-cmds))
+                (for ([cmd-str (in-list all-cmds)])
+                  (printf "  Run: ~a\n" cmd-str)
+                  (define-values (code stdout stderr)
+                    (shell-in-dir (repo-config-path repo) "/bin/bash" "-c" cmd-str))
+                  (unless (zero? code)
+                    (escape (format "Command failed: ~a\n~a" cmd-str stderr))))
+                #f))  ; no error
 
-      (cond
-        ;; Build/test failed: revise or reject
-        [build-error
-         (printf "  Build/test failed\n")
-         (cond
-           [(< attempt max-revs)
-            (printf "  Revising with build error...\n")
-            (git-revert! repo)
-            (revise-loop (add1 attempt)
-                         (string-append "Build/test failed:\n" build-error
-                                        "\n\nFix this error."))]
-           [else
-            (printf "  Build/test failed after ~a attempts — rejected\n" attempt)
-            (git-revert! repo)
-            (iteration-result 'discard (format "Build failed: ~a" build-error))])]
+            (cond
+              ;; Build/test failed: revise or reject
+              [build-error
+               (printf "  Build/test failed\n")
+               (cond
+                 [(< attempt max-revs)
+                  (printf "  Revising with build error...\n")
+                  (git-revert! repo)
+                  (revise-loop (add1 attempt)
+                               (string-append "Build/test failed:\n" build-error
+                                              "\n\nFix this error."))]
+                 [else
+                  (printf "  Build/test failed after ~a attempts — rejected\n" attempt)
+                  (git-revert! repo)
+                  (iteration-result 'discard (format "Build failed: ~a" build-error))])]
 
-        ;; Build passed: proceed to review
-        [else
-         ;; 5. Agent B reviews (independent, sees only diff + task)
-         (define diff-text
-           (with-handlers ([exn:fail? (lambda (_) "")])
-             (shell! repo "git" "diff" "HEAD")))
-         (define judgement (task-param tsk 'judgement ""))
-         (define-values (score issues suggestions)
-           (review-changes (repo-config-path repo)
-                           (task-description tsk)
-                           diff-text
-                           #:model rev-model
-                           #:judgement judgement))
+              ;; Build passed: proceed to review
+              [else
+               ;; 5. Agent B reviews (independent, sees only diff + task)
+               (define diff-text
+                 (with-handlers ([exn:fail? (lambda (_) "")])
+                   (shell! repo "git" "diff" "HEAD")))
+               (define judgement (task-param tsk 'judgement ""))
+               (define-values (score issues suggestions)
+                 (review-changes (repo-config-path repo)
+                                 (task-description tsk)
+                                 diff-text
+                                 #:model rev-model
+                                 #:judgement judgement))
 
-         ;; 6. Ruyi decides
-         (cond
-           ;; Approved
-           [(>= score min-score)
-            (define hash (git-commit! repo mode-obj tsk))
-            (iteration-result 'keep (format "~a (score: ~a)" hash score))]
+               ;; 6. Ruyi decides
+               (cond
+                 ;; Approved
+                 [(>= score min-score)
+                  (define hash (git-commit! repo mode-obj tsk))
+                  (iteration-result 'keep (format "~a (score: ~a)" hash score))]
 
-           ;; Below min-score, attempts left: revise
-           [(< attempt max-revs)
-            (printf "  Score ~a < ~a — revising with feedback...\n" score min-score)
-            (git-revert! repo)
-            (define reformulated (format-feedback-for-implementer issues suggestions))
-            (revise-loop (add1 attempt) reformulated)]
+                 ;; Below min-score, attempts left: revise
+                 [(< attempt max-revs)
+                  (printf "  Score ~a < ~a — revising with feedback...\n" score min-score)
+                  (git-revert! repo)
+                  (define reformulated (format-feedback-for-implementer issues suggestions))
+                  (revise-loop (add1 attempt) reformulated)]
 
-           ;; Max attempts, score >= 5: best effort
-           [(>= score 5)
-            (printf "  Score ~a — max revisions, committing best effort\n" score)
-            (define hash (git-commit! repo mode-obj tsk))
-            (iteration-result 'keep (format "~a (score: ~a, best-effort)" hash score))]
+                 ;; Max attempts, score >= 5: best effort
+                 [(>= score 5)
+                  (printf "  Score ~a — max revisions, committing best effort\n" score)
+                  (define hash (git-commit! repo mode-obj tsk))
+                  (iteration-result 'keep (format "~a (score: ~a, best-effort)" hash score))]
 
-           ;; Truly bad
-           [else
-            (printf "  Score ~a — rejected after ~a attempts\n" score attempt)
-            (git-revert! repo)
-            (iteration-result 'discard (format "Rejected (score: ~a)" score))])]))))
+                 ;; Truly bad
+                 [else
+                  (printf "  Score ~a — rejected after ~a attempts\n" score attempt)
+                  (git-revert! repo)
+                  (iteration-result 'discard (format "Rejected (score: ~a)" score))])]))))))
 
 ;; ============================================================
 ;; Worktree-based evolution (for parallel execution)

@@ -163,6 +163,9 @@
      "- Read the relevant source files before making changes.\n"
      "- Write or update tests for any code you change.\n"
      "- Keep changes focused — ONLY do this one step, nothing more.\n"
+     "- Keep your total diff under ~"
+     (number->string (if (task-extra tsk) (hash-ref (task-extra tsk) 'max-diff 500) 500))
+     " lines. If the change would be too large, focus on the most essential parts.\n"
      "- Do NOT modify: "
      (string-join (repo-config-forbidden-files repo) ", ") "\n"
      "- Follow the project's existing patterns and conventions.\n"
