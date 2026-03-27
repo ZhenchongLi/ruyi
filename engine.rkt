@@ -324,18 +324,8 @@
       (lambda (e)
         (printf "[worktree] Error in ~a: ~a\n" branch (exn-message e)))])
 
-    ;; Validate baseline in worktree (skip if no validate-commands)
-    (cond
-      [(null? (repo-config-validate-commands wt-repo))
-       (printf "[~a] Baseline: skipped (no validate commands)\n" branch)]
-      [else
-       (printf "[~a] Baseline validation:\n" branch)
-       (define baseline (run-validation-gate wt-repo))
-       (unless (validation-result-passed? baseline)
-         (error 'evolution-loop/worktree
-                "Repo is not green! Failed: ~a"
-                (validation-result-failed-step baseline)))
-       (printf "[~a] Baseline: PASSED\n" branch)])
+    ;; No baseline validation — Agent A (Claude Code) handles environment
+    ;; setup (npm install, etc.) as part of implementation
 
     ;; Init log + journal
     (log-init! wt-repo)
