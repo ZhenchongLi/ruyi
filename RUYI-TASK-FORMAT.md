@@ -15,6 +15,7 @@ The task file uses Racket S-expression syntax. Write it to the path specified by
   (max-diff 500)             ;; max diff lines per subtask
   (reviewer-model "sonnet")  ;; "sonnet" or "opus"
   (auto-merge #t)            ;; #t = auto-merge PR, #f = leave for manual review
+  (track #t)                 ;; #t = commit task to git (default), #f = temporary
   (forbidden ("file1" "file2"))  ;; files not to modify, or ()
   (context ("file1" "file2"))    ;; reference files to read, or ()
   (judgement "custom review criteria for the reviewer")

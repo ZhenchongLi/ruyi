@@ -61,14 +61,14 @@ Examples:
     (unless (file-exists? tf)
       (eprintf "No task file created at ~a\n" (path->string tf))
       (exit 1))
-    ;; Commit task file to git — records what was planned
-    (when (directory-exists? (build-path dir ".git"))
+    ;; Commit task file to git if track is enabled
+    (define task (read-ruyi-task tf))
+    (when (and (ruyi-task-track? task) (directory-exists? (build-path dir ".git")))
       (with-handlers ([exn:fail? (lambda (_) (void))])
         (shell!/dir (path->string dir) "git" "add" (path->string folder))
-        (define task (read-ruyi-task tf))
         (shell!/dir (path->string dir) "git" "commit" "-m"
                     (format "ruyi: plan — ~a" (ruyi-task-goal task)))))
-    (values folder (read-ruyi-task tf)))
+    (values folder task))
 
   (define (run-do dir goal)
     "Main do flow: plan → execute."

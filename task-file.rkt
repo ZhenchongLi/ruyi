@@ -17,6 +17,7 @@
    max-diff       ; integer: max diff lines per subtask
    reviewer-model ; string: "sonnet" | "opus"
    auto-merge?    ; boolean: auto PR merge?
+   track?         ; boolean: commit task file to git?
    forbidden      ; (listof string): files not to touch
    context        ; (listof string): reference files
    judgement      ; string: custom review criteria
@@ -24,7 +25,7 @@
   #:transparent)
 
 (define DEFAULT-TASK
-  (ruyi-task "" #t 2 8 500 "sonnet" #t '() '() "" '()))
+  (ruyi-task "" #t 2 8 500 "sonnet" #t #t '() '() "" '()))
 
 ;; ============================================================
 ;; Read .ruyi-task (S-expression format)
@@ -59,6 +60,7 @@
    (or (get 'max-diff) 500)
    (or (get 'reviewer-model) "sonnet")
    (let ([v (get 'auto-merge)]) (if (eq? v #f) #t v))  ; default #t
+   (let ([v (get 'track)]) (if (eq? v #f) #t v))  ; default #t
    (get-list 'forbidden)
    (get-list 'context)
    (or (get 'judgement) "")
@@ -82,6 +84,7 @@
       (fprintf out "  (max-diff ~a)\n" (ruyi-task-max-diff task))
       (fprintf out "  (reviewer-model ~s)\n" (ruyi-task-reviewer-model task))
       (fprintf out "  (auto-merge ~a)\n" (if (ruyi-task-auto-merge? task) "#t" "#f"))
+      (fprintf out "  (track ~a)\n" (if (ruyi-task-track? task) "#t" "#f"))
       (fprintf out "  (forbidden ~s)\n" (ruyi-task-forbidden task))
       (fprintf out "  (context ~s)\n" (ruyi-task-context task))
       (fprintf out "  (judgement ~s)\n" (ruyi-task-judgement task))
