@@ -1,5 +1,5 @@
 #lang racket/base
-(require racket/file racket/string racket/format racket/port racket/list)
+(require racket/file racket/string racket/format racket/port racket/list racket/date racket/path)
 (provide (all-defined-out))
 
 ;; ============================================================
@@ -115,15 +115,92 @@
   (printf "\n"))
 
 ;; ============================================================
+;; Task folder management
+;;
+;; .ruyi-tasks/
+;;   2026-03-27-improve-docs/
+;;     task.rkt          ← task definition
+;;     log.tsv           ← execution log
+;;     journal.md        ← detailed history
+;; ============================================================
+
+(define TASKS-DIR ".ruyi-tasks")
+(define TASK-FILENAME "task.rkt")
+
+(define (tasks-dir dir)
+  (build-path dir TASKS-DIR))
+
+(define (slugify s)
+  "Turn a goal string into a short filesystem-safe slug."
+  (define clean
+    (regexp-replace* #rx"[^a-zA-Z0-9\u4e00-\u9fff]+" (string-downcase s) "-"))
+  (define trimmed
+    (if (> (string-length clean) 40)
+        (substring clean 0 40)
+        clean))
+  (string-trim trimmed "-"))
+
+(define (create-task-dir dir goal)
+  "Create a new task folder under .ruyi-tasks/. Returns the folder path."
+  (define date-str
+    (parameterize ([date-display-format 'iso-8601])
+      (define d (current-date))
+      (format "~a-~a-~a"
+              (date-year d)
+              (~r (date-month d) #:min-width 2 #:pad-string "0")
+              (~r (date-day d) #:min-width 2 #:pad-string "0"))))
+  (define slug (slugify goal))
+  (define folder-name (format "~a-~a" date-str slug))
+  (define folder-path (build-path (tasks-dir dir) folder-name))
+  (make-directory* folder-path)
+  folder-path)
+
+(define (task-file-in-folder folder)
+  (build-path folder TASK-FILENAME))
+
+(define (list-task-dirs dir)
+  "List all task folders, newest first."
+  (define tdir (tasks-dir dir))
+  (if (directory-exists? tdir)
+      (sort
+       (for/list ([d (directory-list tdir #:build? #t)]
+                  #:when (directory-exists? d)
+                  #:when (file-exists? (task-file-in-folder d)))
+         d)
+       string>?
+       #:key path->string)
+      '()))
+
+(define (latest-task-dir dir)
+  "Get the most recent task folder, or #f."
+  (define dirs (list-task-dirs dir))
+  (if (null? dirs) #f (car dirs)))
+
+(define (print-task-list dir)
+  "Print all task folders with their goals."
+  (define dirs (list-task-dirs dir))
+  (cond
+    [(null? dirs)
+     (printf "No tasks found.\n")]
+    [else
+     (printf "Tasks:\n")
+     (for ([d (in-list dirs)] [i (in-naturals 1)])
+       (define task (read-ruyi-task (task-file-in-folder d)))
+       (define name (path->string (file-name-from-path d)))
+       (printf "  ~a. ~a — ~a (~a subtasks)\n"
+               i name (ruyi-task-goal task) (length (ruyi-task-subtasks task))))]))
+
+;; ============================================================
 ;; Prompt for Claude Code to generate .ruyi-task
 ;; ============================================================
 
-(define (task-generation-prompt goal)
-  "Build prompt for Claude Code to generate .ruyi-task file."
+(define (task-generation-prompt goal task-folder-path)
+  "Build prompt for Claude Code to generate task.rkt in the task folder."
   (string-append
    "Read the codebase and understand the project.\n\n"
    "The user wants: " goal "\n\n"
-   "Generate a .ruyi-task file in the project root with this exact S-expression format:\n\n"
+   "Generate a task file at: " (path->string (task-file-in-folder task-folder-path))
+   "\n\nUse this exact S-expression format:\n\n"
    "```\n"
    "(ruyi-task\n"
    "  (goal \"one sentence summary\")\n"
@@ -147,5 +224,5 @@
    "- Order subtasks by dependency\n"
    "- Each subtask should be completable in one commit\n"
    "- Respect the user's explicit constraints in their goal\n"
-   "- Write the file to .ruyi-task in the project root\n"
+   "- Write the file to the path specified above\n"
    "- Output ONLY the file, nothing else\n"))

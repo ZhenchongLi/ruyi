@@ -532,7 +532,7 @@
      (if (string=? context-content "") ""
          (string-append "## Reference files\n" context-content "\n"))))
 
-  (mode 'freestyle select-task build-prompt "evolve/freestyle" "evolve(freestyle)"))
+  (mode 'ruyi select-task build-prompt "ruyi" "ruyi"))
 
 (define (evolution-loop/worktree-task repo rtask)
   "Run evolution from a ruyi-task struct. Returns (values branch kept pr-url)."

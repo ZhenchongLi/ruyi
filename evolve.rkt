@@ -8,7 +8,6 @@
 
   (define-runtime-path ruyi-dir ".")
 
-  (define TASK-FILE ".ruyi-task")
 
   ;; ============================================================
   ;; Ruyi — as you wish
@@ -21,7 +20,8 @@ Ruyi — as you wish
 Usage (run from your project directory):
   ruyi do <goal>                          Do something (auto-plans with Claude Code)
   ruyi do @file.md                        Read goal from file
-  ruyi do                                 Re-run existing .ruyi-task
+  ruyi do                                 Re-run latest task
+  ruyi tasks                              List all tasks
   ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
   ruyi modes                              List saved modes
   ruyi import <file>                      Import a mode file
@@ -48,39 +48,34 @@ Examples:
     (dynamic-require config-module 'local-config))
 
   (define (generate-task-file dir goal)
-    "Launch Claude Code interactively to plan and generate .ruyi-task."
+    "Launch Claude Code interactively to plan and generate task.rkt in a task folder."
     (define repo (ensure-project dir))
-    (define prompt (task-generation-prompt goal))
+    (define folder (create-task-dir dir goal))
+    (printf "Task folder: ~a\n" (path->string folder))
+    (define prompt (task-generation-prompt goal folder))
     (define exit-code (claude-interactive (repo-config-path repo) prompt))
-    (unless (zero? exit-code)
-      (eprintf "Planning session ended. ")
-      (define task-path (build-path dir TASK-FILE))
-      (unless (file-exists? task-path)
-        (eprintf "No .ruyi-task created.\n")
-        (exit 1)))
-    (define task-path (build-path dir TASK-FILE))
-    (unless (file-exists? task-path)
-      (eprintf "Claude Code did not create .ruyi-task. Try again.\n")
+    (define tf (task-file-in-folder folder))
+    (unless (file-exists? tf)
+      (eprintf "No task file created at ~a\n" (path->string tf))
       (exit 1))
-    (read-ruyi-task task-path))
+    (values folder (read-ruyi-task tf)))
 
   (define (run-do dir goal)
-    "Main do flow: plan → confirm → execute."
-    (define task-path (build-path dir TASK-FILE))
-    (define task
+    "Main do flow: plan → execute."
+    (define-values (folder task)
       (cond
-        ;; No goal given but .ruyi-task exists → re-run
-        [(and (not goal) (file-exists? task-path))
-         (printf "Using existing .ruyi-task\n")
-         (read-ruyi-task task-path)]
-        ;; Goal given → generate new task file
-        [goal
-         (generate-task-file dir goal)]
-        ;; No goal, no task file
+        ;; No goal → re-run latest task
+        [(not goal)
+         (define latest (latest-task-dir dir))
+         (unless latest
+           (eprintf "No goal and no existing tasks.\n")
+           (print-usage)
+           (exit 1))
+         (printf "Re-running: ~a\n" (path->string (file-name-from-path latest)))
+         (values latest (read-ruyi-task (task-file-in-folder latest)))]
+        ;; Goal given → generate new task
         [else
-         (eprintf "No goal and no .ruyi-task found.\n")
-         (print-usage)
-         (exit 1)]))
+         (generate-task-file dir goal)]))
 
     ;; Show plan
     (print-ruyi-task task)
@@ -90,7 +85,8 @@ Examples:
     (define-values (branch kept pr-url)
       (evolution-loop/worktree-task repo task))
     (printf "\nDone: ~a (kept ~a)\n" branch kept)
-    (when pr-url (printf "PR: ~a\n" pr-url)))
+    (when pr-url (printf "PR: ~a\n" pr-url))
+    (printf "Task: ~a\n" (path->string folder)))
 
   (define (run-pdo dir goals)
     "Parallel do: generate task files and run in parallel."
@@ -127,9 +123,9 @@ Examples:
   (define args (vector->list (current-command-line-arguments)))
 
   (cond
-    ;; No args: re-run .ruyi-task or show help
+    ;; No args: re-run latest task or show help
     [(empty? args)
-     (if (file-exists? (build-path (current-directory) TASK-FILE))
+     (if (latest-task-dir (current-directory))
          (run-do (current-directory) #f)
          (print-usage))]
 
@@ -181,6 +177,10 @@ Examples:
      (define goals (map string-trim (string-split goal-str "//")))
      (run-pdo (current-directory) goals)]
 
+    ;; ruyi tasks
+    [(and (= (length args) 1) (string=? (first args) "tasks"))
+     (print-task-list (current-directory))]
+
     ;; ruyi modes
     [(and (= (length args) 1) (string=? (first args) "modes"))
      (define available (list-modes (current-directory)))
@@ -210,8 +210,8 @@ Examples:
     [(and (= (length args) 1) (string=? (first args) "clean"))
      (define dir (current-directory))
      (define ruyi-files
-       (list ".ruyi.rkt" ".ruyi-task" "evolution-log.tsv" "evolution-journal.md"))
-     (define ruyi-dirs (list ".ruyi-modes"))
+       (list ".ruyi.rkt" "evolution-log.tsv" "evolution-journal.md"))
+     (define ruyi-dirs (list ".ruyi-modes" ".ruyi-tasks"))
      (define cleaned 0)
      (for ([f (in-list ruyi-files)])
        (define p (build-path dir f))
@@ -225,15 +225,34 @@ Examples:
          (delete-directory/files p)
          (printf "  Removed ~a/\n" d)
          (set! cleaned (add1 cleaned))))
+     ;; Clean stale worktrees
      (define tmp (path->string (find-system-path 'temp-dir)))
      (define stale
        (for/list ([d (directory-list (string->path tmp))]
                   #:when (string-prefix? (path->string d) "ruyi-wt-"))
          (build-path tmp (path->string d))))
      (when (not (null? stale))
+       (printf "  Removing ~a stale worktree(s)\n" (length stale))
        (for ([wt (in-list stale)])
          (when (directory-exists? wt) (delete-directory/files wt)))
        (set! cleaned (+ cleaned (length stale))))
+     ;; Clean ruyi branches (evolve/*)
+     (when (directory-exists? (build-path dir ".git"))
+       (define branch-output
+         (with-handlers ([exn:fail? (lambda (_) "")])
+           (shell!/dir (path->string dir) "git" "branch")))
+       (define ruyi-branches
+         (filter (lambda (b)
+                   (or (string-contains? b "ruyi/")
+                       (string-contains? b "evolve/")))  ; legacy
+                 (map string-trim (string-split branch-output "\n"))))
+       (for ([b (in-list ruyi-branches)])
+         ;; Skip if it's the current branch
+         (unless (string-prefix? b "*")
+           (with-handlers ([exn:fail? (lambda (_) (void))])
+             (shell!/dir (path->string dir) "git" "branch" "-D" b)
+             (printf "  Deleted branch: ~a\n" b)
+             (set! cleaned (add1 cleaned))))))
      (if (= cleaned 0)
          (printf "Nothing to clean.\n")
          (printf "Cleaned ~a item(s).\n" cleaned))]
