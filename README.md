@@ -65,12 +65,18 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
        ├─ For each subtask:
        │    Agent A (Claude Code) implements  ← full agent: reads, writes, tests
        │    Agent B (independent) reviews     ← adversarial, finds issues
+       │    Build/test fails? → feedback to Agent A, retry
        │    Ruyi decides: commit / revise / revert
+       │    ✓ committed → marked done, next subtask inherits state
+       │
+       ├─ Re-run? Auto-skips completed subtasks, continues where it left off
        │
        └─ Push + PR (or local merge)
 ```
 
 Two independent AI agents — one implements, one reviews. They never see each other's reasoning. Ruyi is the referee.
+
+Subtasks run sequentially in the same worktree — each one sees the previous one's changes. Re-running `ruyi do` on the same task auto-continues from where it stopped.
 
 ## Claude Code + Ruyi
 
@@ -97,8 +103,10 @@ Ruyi handles worktree isolation, iterative review, and safe commit/revert.
 
 - **Atomic commit-or-revert** — every subtask either passes and commits, or reverts completely
 - **Dual-agent review** — implementer and reviewer are independent, adversarial
+- **Build/test failures trigger revision** — error messages feed back to Agent A for retry, not immediate rejection
 - **Worktree isolation** — each task runs in its own git worktree, never touches your working directory
-- **All parameters in your hands** — score thresholds, diff limits, revision rounds, all controllable through natural language
+- **Resumable** — re-running a task auto-skips completed subtasks
+- **All parameters in your hands** — score thresholds, diff limits, revision rounds, build/test commands, all controllable through natural language
 
 ## All commands
 
@@ -119,22 +127,28 @@ ruyi version                     # show version
 
 ## Task file
 
-Every `ruyi do` generates a `.ruyi-tasks/` folder with a task file — human-readable, editable, git-tracked:
+Every `ruyi do` generates a `.ruyi-tasks/` folder:
+
+```
+.ruyi-tasks/2026-03-27-improve-docs/
+  task.rkt     ← task definition (human-readable, editable, git-tracked)
+  done.txt     ← completed subtask indices (auto-managed)
+```
 
 ```racket
 (ruyi-task
   (goal "improve documentation")
-  (build ())
-  (test ())
-  (max-revisions 2)
-  (min-score 8)
+  (build ())                              ;; build commands, or () to skip
+  (test ())                               ;; test commands, or () to skip
+  (max-revisions 2)                       ;; review-revise rounds per subtask
+  (min-score 8)                           ;; reviewer approval threshold
   (judgement "focus on clarity for HN readers")
   (subtasks
     ("Write bilingual README")
     ("Add architecture diagram")))
 ```
 
-Edit it, re-run with `ruyi do`. Share with your team.
+Edit `task.rkt`, re-run with `ruyi do`. Delete `done.txt` to restart from scratch. Share with your team.
 
 <details>
 <summary>Why Racket?</summary>

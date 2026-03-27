@@ -65,12 +65,18 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
        ├─ 每个子任务：
        │    Agent A (Claude Code) 实现  ← 完整能力：读文件、写代码、跑测试
        │    Agent B (独立) 审查         ← 对抗性，找问题
+       │    构建/测试失败？→ 错误信息反馈给 Agent A，重试
        │    如意裁决：提交 / 修改 / 回滚
+       │    ✓ 提交 → 标记完成，下一个子任务继承状态
+       │
+       ├─ 重跑？自动跳过已完成的子任务，从断点继续
        │
        └─ 推送 + PR（或本地合并）
 ```
 
 两个独立 AI agent——一个实现，一个审查。它们看不到彼此的推理过程。如意是裁判。
+
+子任务在同一个 worktree 中顺序执行——每个都能看到前一个的改动。重跑 `ruyi do` 会自动从断点继续。
 
 ## Claude Code + 如意
 
@@ -97,8 +103,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
 
 - **原子性提交或回滚** ——每个子任务要么通过并提交，要么完整回滚
 - **双 Agent 审查** ——实现者和审查者独立、对抗
+- **构建/测试失败触发修订** ——错误信息反馈给 Agent A 重试，而非直接拒绝
 - **Worktree 隔离** ——每个任务在独立的 git worktree 中运行，不碰你的工作目录
-- **所有参数由你掌控** ——分数阈值、diff 限制、修改轮数，全部通过自然语言控制
+- **可续跑** ——重跑任务自动跳过已完成的子任务
+- **所有参数由你掌控** ——分数阈值、diff 限制、修改轮数、构建/测试命令，全部通过自然语言控制
 
 ## 全部命令
 
@@ -119,21 +127,30 @@ ruyi version                     # 显示版本
 
 ## 任务文件
 
-每次 `ruyi do` 会生成 `.ruyi-tasks/` 文件夹，包含任务文件——可读、可编辑、git 跟踪：
+每次 `ruyi do` 会生成 `.ruyi-tasks/` 文件夹：
+
+```
+.ruyi-tasks/2026-03-27-improve-docs/
+  task.rkt     ← 任务定义（可读、可编辑、git 跟踪）
+  done.txt     ← 已完成的子任务序号（自动管理）
+```
+
+任务文件格式：
 
 ```racket
 (ruyi-task
   (goal "提高文档质量")
-  (validate #f)
-  (max-revisions 2)
-  (min-score 8)
+  (build ())                              ;; 构建命令，() 跳过
+  (test ())                               ;; 测试命令，() 跳过
+  (max-revisions 2)                       ;; 每个子任务的审查-修订轮数
+  (min-score 8)                           ;; 审查者通过阈值
   (judgement "关注清晰度，面向 HN 读者")
   (subtasks
     ("编写中英双语 README")
     ("添加架构图和说明")))
 ```
 
-编辑后 `ruyi do` 重跑。可以分享给团队。
+编辑 `task.rkt`，`ruyi do` 重跑。删除 `done.txt` 从头开始。可以分享给团队。
 
 <details>
 <summary>为什么选择 Racket？</summary>
