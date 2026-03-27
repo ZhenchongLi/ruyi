@@ -4,6 +4,10 @@
 
 [中文文档](README.zh-CN.md)
 
+## Status
+
+This project is under active development. The `.ruyi-tasks` format and public APIs may change between releases.
+
 **心想事成。**
 
 The hardest part of any task isn't doing it — it's knowing exactly what "done" looks like. Ruyi helps you define what you really want through an interactive conversation with [Claude Code](https://claude.ai/code), including how to judge if it's good enough. Then it takes over: autonomous implement-review loops until your definition of "done" is met.
