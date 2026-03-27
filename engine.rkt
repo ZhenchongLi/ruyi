@@ -219,6 +219,10 @@
         (git-revert! repo)
         (raise (make-exn:fail "Claude failed" (current-continuation-marks))))
 
+      ;; 2b. Stage all changes (so untracked new files show in diff)
+      (with-handlers ([exn:fail? (lambda (_) (void))])
+        (shell! repo "git" "add" "-A"))
+
       ;; 3. Safety checks
       (define forbidden (git-check-forbidden-files repo))
       (unless (null? forbidden)
