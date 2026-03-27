@@ -350,3 +350,127 @@ The failure mode was especially insidious: the engine didn't error out. It repor
 失败模式特别阴险：引擎不会报错。它报告一个很小的 diff，审查者给出低分，引擎回滚（正确的）工作，然后进入下一次尝试——同样会失败。从外部看，像是审查者过于严格或 Agent A 产出了糟糕的实现。真正的问题是审查基础设施是盲的。
 
 The fix is two lines of code, but it required the reviewer to surface the symptom. An implementer-only workflow would have seen "reviewer rejected my work" and tried harder — never questioning whether the reviewer could actually see the work.
+
+---
+
+## Bug #3: Explicit `#f` for Auto-Merge Was Treated as `#t` / Bug #3：显式 `#f` 自动合并被当作 `#t`
+
+### Discovery / 发现
+
+When Agent A wrote round-trip tests for boolean fields, it created a task file with explicit opt-outs:
+
+当 Agent A 为布尔字段编写往返测试时，它创建了一个带有显式关闭选项的任务文件：
+
+```scheme
+(ruyi-task
+  (goal "test")
+  (auto-merge #f)
+  (track #f))
+```
+
+The test asserted that both fields should parse as `#f`:
+
+测试断言这两个字段应解析为 `#f`：
+
+```racket
+(check-equal? (ruyi-task-auto-merge? task) #f)
+(check-equal? (ruyi-task-track? task) #f)
+```
+
+Both failed. The parser returned `#t` for both — the default value, as if the fields had never been set. A user who explicitly wrote `(auto-merge #f)` to prevent automatic PR merging would have their preference silently overridden.
+
+两个都失败了。解析器对两个字段都返回 `#t`——默认值，就好像这些字段从未被设置过。一个显式写了 `(auto-merge #f)` 来阻止自动 PR 合并的用户，其偏好会被静默覆盖。
+
+### Root Cause / 根本原因
+
+The parser's `get` helper used `#f` as the default return value when a key was not found:
+
+解析器的 `get` 辅助函数在键未找到时使用 `#f` 作为默认返回值：
+
+```racket
+(define (get key [default #f])
+  (define pair (assq key fields))
+  (if pair (cadr pair) default))
+```
+
+When the task file contained `(auto-merge #f)`, `get` correctly extracted `#f` from the S-expression. But the calling code couldn't distinguish this from a missing field:
+
+当任务文件包含 `(auto-merge #f)` 时，`get` 正确地从 S 表达式中提取出 `#f`。但调用代码无法区分这个值和缺失字段：
+
+```racket
+;; In parse-ruyi-task-expr:
+(let ([v (get 'auto-merge)]) (if (eq? v #f) #t v))
+```
+
+The logic was: "if `v` is `#f`, use the default `#t`; otherwise use `v`." But `#f` had two meanings:
+
+1. The key was not present in the file → should default to `#t`
+2. The key was present with value `#f` → should remain `#f`
+
+Since both cases produced the same value (`#f`) from `get`, the `if` branch always treated them identically — defaulting to `#t`.
+
+逻辑是："如果 `v` 是 `#f`，使用默认值 `#t`；否则使用 `v`。"但 `#f` 有两层含义：
+
+1. 键不存在于文件中 → 应使用默认值 `#t`
+2. 键存在且值为 `#f` → 应保持 `#f`
+
+由于两种情况从 `get` 产生相同的值（`#f`），`if` 分支总是将它们一视同仁——默认为 `#t`。
+
+This is a classic sentinel-value collision: using a value from the domain (`#f` is a valid boolean) as a signal for "absent." It's the same class of bug as using `null` to mean "not found" in a system where `null` is a valid data value.
+
+这是经典的哨兵值冲突：将一个属于值域的值（`#f` 是有效的布尔值）用作"缺失"信号。与在 `null` 是有效数据值的系统中用 `null` 表示"未找到"属于同一类 bug。
+
+### The Fix / 修复
+
+The fix introduced a `gensym` sentinel — a unique symbol guaranteed to never appear in any S-expression — to represent "missing," and added a dedicated `get-bool` helper that uses it.
+
+修复方案引入了 `gensym` 哨兵——一个保证永远不会出现在任何 S 表达式中的唯一符号——来表示"缺失"，并添加了使用它的专用 `get-bool` 辅助函数。
+
+**Before** (`task-file.rkt`, `parse-ruyi-task-expr`):
+
+```racket
+(define (get key [default #f])
+  (define pair (assq key fields))
+  (if pair (cadr pair) default))
+
+;; Boolean fields: #f means both "missing" and "explicitly false"
+(let ([v (get 'auto-merge)]) (if (eq? v #f) #t v))   ; ← #f → #t!
+(let ([v (get 'track)])      (if (eq? v #f) #t v))    ; ← #f → #t!
+```
+
+**After** (commit 7273980):
+
+```racket
+(define MISSING (gensym 'missing))
+
+(define (get key [default MISSING])
+  (define pair (assq key fields))
+  (if pair (cadr pair) default))
+
+(define (get-bool key default)
+  "Get a boolean field. Distinguishes missing from explicit #f."
+  (define v (get key))
+  (if (eq? v MISSING) default v))    ; ← only defaults when truly missing
+
+;; Boolean fields now use get-bool:
+(get-bool 'auto-merge #t)           ; missing → #t, explicit #f → #f ✓
+(get-bool 'track #t)                ; missing → #t, explicit #f → #f ✓
+```
+
+`gensym` creates a symbol that is `eq?` only to itself — it cannot collide with any value read from an S-expression. This cleanly separates the "not found" signal from the data domain. The same `MISSING` sentinel is also used for non-boolean fields (`goal`, `max-revisions`, etc.), replacing all the ad-hoc `(if (eq? v #f) default v)` patterns with a consistent approach.
+
+`gensym` 创建一个只与自身 `eq?` 的符号——它不可能与从 S 表达式读取的任何值冲突。这干净地将"未找到"信号与数据域分离。同一个 `MISSING` 哨兵也用于非布尔字段（`goal`、`max-revisions` 等），将所有临时的 `(if (eq? v #f) default v)` 模式替换为一致的方法。
+
+### Why It Matters / 为什么重要
+
+In production, this bug would silently override a safety control. A user who set `(auto-merge #f)` — perhaps because they wanted to review the PR manually before merging — would find that ruyi merged it automatically anyway. The setting existed in the file, the UI showed it, but the parser ignored it.
+
+在生产环境中，这个 bug 会静默覆盖安全控制。一个设置了 `(auto-merge #f)` 的用户——也许因为想在合并前手动审查 PR——会发现如意还是自动合并了。设置存在于文件中，界面也显示了它，但解析器忽略了它。
+
+The same bug affected `track`, which controls whether the task file is committed to git. Setting `(track #f)` for a sensitive task would be ignored — the task file would be committed anyway, potentially exposing internal planning details to the repository history.
+
+同一 bug 也影响了 `track`，它控制任务文件是否提交到 git。为敏感任务设置 `(track #f)` 会被忽略——任务文件仍然会被提交，可能将内部规划细节暴露到仓库历史中。
+
+The test that caught this was straightforward — just parse a file with `#f` values and check they come back as `#f`. But writing it required the insight that `#f` plays double duty in Racket as both a boolean and a common default. Agent B's review of the initial test suite flagged the missing edge case: "no test covers explicit `#f` for boolean fields." That observation led directly to the test, the failure, and the fix.
+
+捕获这个 bug 的测试很简单——只需解析一个包含 `#f` 值的文件并检查它们是否作为 `#f` 返回。但编写它需要理解 `#f` 在 Racket 中同时充当布尔值和常见默认值的双重角色。Agent B 在审查初始测试套件时标记了缺失的边缘情况："没有测试覆盖布尔字段的显式 `#f`。"这个观察直接导致了测试、失败和修复。
