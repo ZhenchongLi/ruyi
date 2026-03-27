@@ -124,6 +124,31 @@
   (printf "\n"))
 
 ;; ============================================================
+;; Subtask completion tracking (done.txt)
+;; ============================================================
+
+(define DONE-FILENAME "done.txt")
+
+(define (done-file-path folder)
+  (build-path folder DONE-FILENAME))
+
+(define (read-done folder)
+  "Read completed subtask indices from done.txt. Returns a set of integers."
+  (define p (done-file-path folder))
+  (if (file-exists? p)
+      (for/list ([line (in-list (string-split (file->string p) "\n"))]
+                 #:when (not (string=? (string-trim line) "")))
+        (or (string->number (string-trim line)) 0))
+      '()))
+
+(define (mark-done! folder index)
+  "Append a subtask index to done.txt."
+  (define p (done-file-path folder))
+  (call-with-output-file p
+    (lambda (out) (fprintf out "~a\n" index))
+    #:exists 'append))
+
+;; ============================================================
 ;; Task folder management
 ;;
 ;; .ruyi-tasks/

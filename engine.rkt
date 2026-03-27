@@ -372,7 +372,12 @@
                     (if (eq? (iteration-result-status result) 'keep) "+" "-")
                     (iteration-result-detail result))
             (when (eq? (iteration-result-status result) 'keep)
-              (set! kept-tasks (cons tsk kept-tasks)))
+              (set! kept-tasks (cons tsk kept-tasks))
+              ;; Mark subtask as done in task folder
+              (define st-idx (task-param tsk 'subtask-index #f))
+              (define st-folder (task-param tsk 'task-folder #f))
+              (when (and st-idx st-folder)
+                (mark-done! st-folder st-idx)))
             (when (eq? (iteration-result-status result) 'discard)
               (set! discarded-count (add1 discarded-count)))
 
@@ -475,16 +480,28 @@
 ;; Task-file based evolution (new architecture)
 ;; ============================================================
 
-(define (make-task-mode rtask)
-  "Create a mode object from a ruyi-task struct."
-  (define subtask-list (ruyi-task-subtasks rtask))
-  (define remaining (box subtask-list))
+(define (make-task-mode rtask #:task-folder [task-folder #f])
+  "Create a mode object from a ruyi-task struct. Skips completed subtasks."
+  (define all-subtasks (ruyi-task-subtasks rtask))
+  (define done-indices
+    (if task-folder (read-done task-folder) '()))
+  ;; Build indexed list, skip done ones
+  (define remaining
+    (box (for/list ([st (in-list all-subtasks)]
+                    [i (in-naturals 1)]
+                    #:when (not (member i done-indices)))
+           (cons i st))))  ; (index . description)
+
+  (when (and task-folder (not (null? done-indices)))
+    (printf "Skipping ~a completed subtask(s)\n" (length done-indices)))
 
   (define (select-task repo done)
     (define rem (unbox remaining))
     (if (null? rem)
         #f
-        (let ([next (car rem)])
+        (let* ([pair (car rem)]
+               [idx (car pair)]
+               [next (cdr pair)])
           (set-box! remaining (cdr rem))
           (task ""
                 (if (> (string-length next) 70)
@@ -494,6 +511,8 @@
                 (make-immutable-hash
                  (list (cons 'goal next)
                        (cons 'overview (ruyi-task-goal rtask))
+                       (cons 'subtask-index idx)
+                       (cons 'task-folder task-folder)
                        (cons 'build-commands (ruyi-task-build rtask))
                        (cons 'test-commands (ruyi-task-test rtask))
                        (cons 'max-revisions (ruyi-task-max-revisions rtask))
@@ -544,9 +563,9 @@
 
   (mode 'ruyi select-task build-prompt "ruyi" "ruyi"))
 
-(define (evolution-loop/worktree-task repo rtask)
+(define (evolution-loop/worktree-task repo rtask #:task-folder [task-folder #f])
   "Run evolution from a ruyi-task struct. Returns (values branch kept pr-url)."
-  (define mode-obj (make-task-mode rtask))
+  (define mode-obj (make-task-mode rtask #:task-folder task-folder))
   (evolution-loop/worktree repo mode-obj
                             #:auto-merge? (ruyi-task-auto-merge? rtask)))
 

@@ -93,7 +93,7 @@ Examples:
     ;; Execute
     (define repo (ensure-project dir))
     (define-values (branch kept pr-url)
-      (evolution-loop/worktree-task repo task))
+      (evolution-loop/worktree-task repo task #:task-folder folder))
     (printf "\nDone: ~a (kept ~a)\n" branch kept)
     (when pr-url (printf "PR: ~a\n" pr-url))
     (printf "Task: ~a\n" (path->string folder)))
