@@ -1,7 +1,9 @@
 #lang racket/base
 (require racket/format racket/list racket/string racket/file racket/port racket/match)
-(require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt" "judge.rkt" "review.rkt")
-(provide evolution-loop evolution-loop/worktree run-parallel-evolutions)
+(require "config.rkt" "claude.rkt" "git.rkt" "validate.rkt" "log.rkt" "judge.rkt" "review.rkt"
+         "task-file.rkt")
+(provide evolution-loop evolution-loop/worktree run-parallel-evolutions
+         evolution-loop/worktree-task run-parallel-task-evolutions)
 
 ;; ============================================================
 ;; Helper: clone repo-config with a different path
@@ -246,11 +248,13 @@
       (define diff-text
         (with-handlers ([exn:fail? (lambda (_) "")])
           (shell! repo "git" "diff" "HEAD")))
+      (define judgement (task-param tsk 'judgement ""))
       (define-values (score issues suggestions)
         (review-changes (repo-config-path repo)
                         (task-description tsk)
                         diff-text
-                        #:model rev-model))
+                        #:model rev-model
+                        #:judgement judgement))
 
       ;; 6. Ruyi decides (thresholds from task spec)
       (define revise-threshold (max 1 (- min-score 2)))  ; e.g. min-score 8 → revise at 6+
@@ -457,3 +461,86 @@
   (printf "==================================\n")
 
   results)
+
+;; ============================================================
+;; Task-file based evolution (new architecture)
+;; ============================================================
+
+(define (make-task-mode rtask)
+  "Create a mode object from a ruyi-task struct."
+  (define subtask-list (ruyi-task-subtasks rtask))
+  (define remaining (box subtask-list))
+
+  (define (select-task repo done)
+    (define rem (unbox remaining))
+    (if (null? rem)
+        #f
+        (let ([next (car rem)])
+          (set-box! remaining (cdr rem))
+          (task ""
+                (if (> (string-length next) 70)
+                    (string-append (substring next 0 70) "...")
+                    next)
+                1
+                (make-immutable-hash
+                 (list (cons 'goal next)
+                       (cons 'overview (ruyi-task-goal rtask))
+                       (cons 'skip-validation (not (ruyi-task-validate? rtask)))
+                       (cons 'max-revisions (ruyi-task-max-revisions rtask))
+                       (cons 'min-score (ruyi-task-min-score rtask))
+                       (cons 'max-diff (ruyi-task-max-diff rtask))
+                       (cons 'reviewer-model (ruyi-task-reviewer-model rtask))
+                       (cons 'auto-merge (ruyi-task-auto-merge? rtask))
+                       (cons 'forbidden (ruyi-task-forbidden rtask))
+                       (cons 'context (ruyi-task-context rtask))
+                       (cons 'judgement (ruyi-task-judgement rtask))))))))
+
+  (define (build-prompt repo tsk)
+    (define subtask-goal (hash-ref (task-extra tsk) 'goal))
+    (define overview (hash-ref (task-extra tsk) 'overview))
+    (define reviewer-fb
+      (if (hash-has-key? (task-extra tsk) 'reviewer-feedback)
+          (hash-ref (task-extra tsk) 'reviewer-feedback) ""))
+    (define judgement (hash-ref (task-extra tsk) 'judgement ""))
+    (define ctx-files (hash-ref (task-extra tsk) 'context '()))
+    (define forbidden (hash-ref (task-extra tsk) 'forbidden '()))
+
+    (define context-content
+      (for/fold ([ctx ""])
+                ([cf (in-list ctx-files)])
+        (define full-path (build-path (repo-config-path repo) cf))
+        (if (file-exists? full-path)
+            (string-append ctx "\n\n## " cf "\n\n" (file->string full-path))
+            ctx)))
+
+    (string-append
+     "You are implementing one step of a larger goal.\n\n"
+     "## Overall goal\n\n" overview "\n\n"
+     "## This step\n\n" subtask-goal "\n\n"
+     (if (string=? reviewer-fb "")
+         ""
+         (string-append "## Issues found in your previous attempt\n\n"
+                        reviewer-fb "\n\nFix these issues.\n\n"))
+     "## Rules\n\n"
+     "- Read relevant source files before making changes.\n"
+     "- Write or update tests for code changes.\n"
+     "- Keep changes focused — ONLY do this one step.\n"
+     (if (null? forbidden) ""
+         (string-append "- Do NOT modify: "
+                        (string-join forbidden ", ") "\n"))
+     "- Follow the project's existing patterns.\n\n"
+     (if (string=? context-content "") ""
+         (string-append "## Reference files\n" context-content "\n"))))
+
+  (mode 'freestyle select-task build-prompt "evolve/freestyle" "evolve(freestyle)"))
+
+(define (evolution-loop/worktree-task repo rtask)
+  "Run evolution from a ruyi-task struct. Returns (values branch kept pr-url)."
+  (define mode-obj (make-task-mode rtask))
+  (evolution-loop/worktree repo mode-obj
+                            #:auto-merge? (ruyi-task-auto-merge? rtask)))
+
+(define (run-parallel-task-evolutions repo tasks)
+  "Run multiple ruyi-tasks in parallel."
+  (define modes (map make-task-mode tasks))
+  (run-parallel-evolutions repo modes))

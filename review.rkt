@@ -33,10 +33,16 @@
 
 (define (review-changes repo-path task-description diff-text
                          #:model [model "sonnet"]
+                         #:judgement [judgement ""]
                          #:timeout [timeout 60])
   "Agent B: review changes independently. Returns (values score issues suggestions)."
-  (define prompt
+  (define base-prompt
     (format REVIEW-PROMPT-TEMPLATE task-description diff-text))
+  (define prompt
+    (if (string=? judgement "")
+        base-prompt
+        (string-append base-prompt
+                       "\n## Additional review criteria\n\n" judgement "\n")))
 
   (printf "  Reviewing... ")
   (flush-output)
