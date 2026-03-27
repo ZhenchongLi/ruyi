@@ -5,6 +5,7 @@ compiled/
 # Ruyi generated files (machine-specific, auto-regenerated)
 .ruyi.rkt
 .ruyi-task
+.ruyi-tasks/
 evolution-log.tsv
 evolution-journal.md
 
