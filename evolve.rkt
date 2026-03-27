@@ -20,6 +20,8 @@ Ruyi — as you wish
 Usage (run from your project directory):
   ruyi do <goal>                          Do something (auto-plans with Claude Code)
   ruyi do @file.md                        Read goal from file
+  ruyi do #123                            Do a GitHub issue
+  ruyi do #123 \"extra context\"            Issue + additional instructions
   ruyi do                                 Re-run latest task
   ruyi tasks                              List all tasks
   ruyi pdo <g1> // <g2> // ...            Do multiple things in parallel
@@ -161,15 +163,38 @@ Examples:
                  saved-goal
                  (string-append saved-goal "\n\nAdditional: " extra))]
             [else (string-join rest " ")]))
-        ;; Support @file
+        ;; Support @file and #issue
         (define goal
-          (if (string-prefix? raw-goal "@")
-              (let ([fpath (substring raw-goal 1)])
-                (unless (file-exists? fpath)
-                  (eprintf "File not found: ~a\n" fpath) (exit 1))
-                (printf "Reading goal from: ~a\n" fpath)
-                (file->string fpath))
-              raw-goal))
+          (cond
+            ;; @file — read from file
+            [(string-prefix? raw-goal "@")
+             (let ([fpath (substring raw-goal 1)])
+               (unless (file-exists? fpath)
+                 (eprintf "File not found: ~a\n" fpath) (exit 1))
+               (printf "Reading goal from: ~a\n" fpath)
+               (file->string fpath))]
+            ;; #123 or #issue — fetch GitHub issue
+            [(regexp-match #rx"^#([0-9]+)" raw-goal)
+             => (lambda (m)
+                  (define issue-num (second m))
+                  (printf "Fetching issue #~a...\n" issue-num)
+                  (define issue-text
+                    (with-handlers ([exn:fail?
+                                     (lambda (e)
+                                       (eprintf "Failed to fetch issue: ~a\n" (exn-message e))
+                                       (exit 1))])
+                      (shell!/dir (path->string dir)
+                                  "gh" "issue" "view" issue-num
+                                  "--json" "title,body"
+                                  "--jq" "\"Issue #\" + (.number|tostring) + \": \" + .title + \"\\n\\n\" + .body")))
+                  ;; Append any extra text after #123
+                  (define extra (regexp-replace #rx"^#[0-9]+" raw-goal ""))
+                  (define trimmed-extra (string-trim extra))
+                  (if (string=? trimmed-extra "")
+                      (string-trim issue-text)
+                      (string-append (string-trim issue-text)
+                                     "\n\nAdditional: " trimmed-extra)))]
+            [else raw-goal]))
         (run-do dir goal)])]
 
     ;; ruyi pdo
