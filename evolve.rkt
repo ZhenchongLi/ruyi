@@ -97,7 +97,7 @@ Examples:
               "with just 4 fields: goal, judgement, max-revisions, min-score.\n"
               "Combine the subtasks into a single clear goal. "
               "Write a thorough judgement based on what the old file was trying to achieve.\n"))
-           (claude-interactive (repo-config-path repo) migrate-prompt))
+           (claude-agent (repo-config-path repo) migrate-prompt))
          (values latest (read-ruyi-task tf))]
         ;; Goal given → generate new task
         [else
