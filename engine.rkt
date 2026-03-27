@@ -490,26 +490,34 @@
 ;; ============================================================
 
 (define (make-task-mode rtask #:task-folder [task-folder #f])
-  "Create a mode object from a ruyi-task struct."
-  (define done? (box #f))
+  "Create a mode object from a ruyi-task struct.
+   Re-reads task.rkt each iteration so live edits take effect."
+
+  (define (read-latest-task)
+    "Re-read task.rkt from disk if task-folder exists, otherwise use original."
+    (if task-folder
+        (let ([tf (task-file-in-folder task-folder)])
+          (if (file-exists? tf)
+              (with-handlers ([exn:fail? (lambda (_) rtask)])
+                (read-ruyi-task tf))
+              rtask))
+        rtask))
 
   (define (select-task repo _done)
-    (if (unbox done?)
-        #f
-        (let ([goal (ruyi-task-goal rtask)])
-          (set-box! done? #t)
-          (task ""
-                (if (> (string-length goal) 70)
-                    (string-append (substring goal 0 70) "...")
-                    goal)
-                1
-                (make-immutable-hash
-                 (list (cons 'goal goal)
-                       (cons 'overview goal)
-                       (cons 'task-folder task-folder)
-                       (cons 'max-revisions (ruyi-task-max-revisions rtask))
-                       (cons 'min-score (ruyi-task-min-score rtask))
-                       (cons 'judgement (ruyi-task-judgement rtask))))))))
+    (let* ([latest (read-latest-task)]
+           [goal (ruyi-task-goal latest)])
+      (task ""
+            (if (> (string-length goal) 70)
+                (string-append (substring goal 0 70) "...")
+                goal)
+            1
+            (make-immutable-hash
+             (list (cons 'goal goal)
+                   (cons 'overview goal)
+                   (cons 'task-folder task-folder)
+                   (cons 'max-revisions (ruyi-task-max-revisions latest))
+                   (cons 'min-score (ruyi-task-min-score latest))
+                   (cons 'judgement (ruyi-task-judgement latest)))))))
 
   (define (build-prompt repo tsk)
     (define goal (hash-ref (task-extra tsk) 'goal))
