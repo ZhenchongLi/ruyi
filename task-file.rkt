@@ -157,7 +157,16 @@
   "Build prompt for Claude Code to generate task.rkt."
   (define format-file (build-path ruyi-home "RUYI-TASK-FORMAT.md"))
   (string-append
+   "You are helping the user define a task for the ruyi engine.\n\n"
    "The user wants: " goal "\n\n"
-   "Read the format spec at: " (path->string format-file) "\n"
-   "Then read this project's codebase.\n"
-   "Generate the task file at: " (path->string (task-file-in-folder task-folder-path)) "\n"))
+   "Your job is to work WITH the user to produce a task file with 4 fields:\n"
+   "- goal: what to do (clear and specific)\n"
+   "- judgement: how to verify it's done well (this is critical — the reviewer uses this)\n"
+   "- max-revisions: how many review-revise rounds (1-5, default 3)\n"
+   "- min-score: minimum reviewer score to approve (1-10, default 8)\n\n"
+   "IMPORTANT: Do NOT generate the task file immediately. First:\n"
+   "1. Read the format spec at: " (path->string format-file) "\n"
+   "2. Read the project's codebase to understand context\n"
+   "3. Discuss with the user: propose a goal and judgement, ask if they agree\n"
+   "4. Only after the user confirms, write the task file at: "
+   (path->string (task-file-in-folder task-folder-path)) "\n"))
