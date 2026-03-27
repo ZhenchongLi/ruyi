@@ -4,17 +4,20 @@
 
 [English](README.md) | 中文
 
-**如你所愿。** 用自主的实现-审查循环，替代传统的 dev-review 工作流。
+**如你所愿。** 自主的实现-审查循环，不只是写代码——任何任务都行。
 
-灵感来自 [Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch)——AI agent 可以在循环中做真正的工作，而不只是一次性生成。如意将这个理念应用于软件工程：两个独立的 AI agent 对每个变更反复博弈，直到质量收敛。
+灵感来自 [Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch)。核心洞察：真正的工作发生在循环中，而非一次性生成。如意把软件开发中久经验证的模式——实现、审查、修改、交付——泛化到**一切场景**：代码、文档、研究、翻译、策划，任何你能描述的任务。
 
 ## 能做什么
 
 ```bash
 ruyi do "添加 CLI 支持"
+ruyi do "写一篇产品发布的博客"
+ruyi do "把 README 翻译成日语"
+ruyi do "调研竞品定价并写摘要"
 ```
 
-一条命令。如意和你一起规划，然后运行自主循环：**Agent A 实现 → Agent B 审查 → 修改或提交**。每一轮，实现者从审查者的反馈中改进。只有通过审查的变更才会被提交。最终你得到一个干净的 PR。
+一条命令，任何任务。如意和你一起规划，然后运行自主循环：**Agent A 执行 → Agent B 审查 → 修改或交付**。每一轮从审查反馈中改进。只有高质量的产出才能通过。
 
 ## 怎么用
 
@@ -114,8 +117,8 @@ ruyi version                     # 显示版本
 
 ## 致谢
 
-- [Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch)——核心洞察：AI agent 可以在自主循环中做真正的迭代工作，而非一次性生成。如意将这一模式引入软件工程，加入双 Agent 审查。
-- [Claude Code](https://claude.ai/code) by Anthropic——执行实现和审查的 AI agent。
+- [Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch)——核心洞察：AI agent 可以在自主循环中做真正的迭代工作，而非一次性生成。如意将其泛化：软件开发的实现-审查-交付模式，适用于任何任务。
+- [Claude Code](https://claude.ai/code) by Anthropic——驱动实现和审查的 AI agent。
 
 ## 许可证
 

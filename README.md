@@ -4,17 +4,20 @@
 
 [中文文档](README.zh-CN.md)
 
-**As you wish.** Autonomous implement-review loops that replace the traditional dev-review workflow.
+**As you wish.** Autonomous implement-review loops for any task — not just code.
 
-Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) — the idea that AI agents can do real work in loops, not just one-shot generation. Ruyi applies this to software engineering: two independent AI agents battle over every change until quality converges.
+Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch). The insight: real work happens in loops, not one-shot generation. Ruyi takes the battle-tested software development pattern — implement, review, revise, ship — and makes it work for **everything**: code, docs, research, translation, planning, anything you can describe.
 
 ## What it does
 
 ```bash
 ruyi do "add CLI support"
+ruyi do "write a blog post about our product launch"
+ruyi do "translate README to Japanese"
+ruyi do "research competitor pricing and write a summary"
 ```
 
-One command. Ruyi plans with you, then runs an autonomous loop: **Agent A implements → Agent B reviews → revise or commit**. Each round, the implementer gets better from the reviewer's feedback. Only changes that pass review get committed. You get one clean PR.
+One command, any task. Ruyi plans with you, then runs an autonomous loop: **Agent A does the work → Agent B reviews → revise or deliver**. Each round improves from the reviewer's feedback. Only quality output survives.
 
 ## How to use
 
@@ -114,8 +117,8 @@ The safety invariants (atomic commit-or-revert, diff limits, dual-agent review) 
 
 ## Acknowledgments
 
-- [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) — the core insight that AI agents can work in autonomous loops, doing real iterative work rather than one-shot generation. Ruyi brings this pattern to software engineering with dual-agent review.
-- [Claude Code](https://claude.ai/code) by Anthropic — the AI agent that does the actual implementation and review.
+- [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) — the core insight that AI agents can work in autonomous loops, doing real iterative work rather than one-shot generation. Ruyi generalizes this: software development's implement-review-ship pattern works for any task.
+- [Claude Code](https://claude.ai/code) by Anthropic — the AI agent powering both implementation and review.
 
 ## License
 
