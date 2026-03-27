@@ -1,42 +1,31 @@
 # .ruyi-task File Format
 
-This file defines the format for ruyi task files. Claude Code reads this to generate valid task files.
+The task file is the contract between Agent A (implementer) and Agent B (reviewer).
 
 ## Format
 
-The task file uses Racket S-expression syntax. Write it to the path specified by ruyi.
-
 ```racket
 (ruyi-task
-  (goal "one sentence summary of what to do")
-  (build ("pnpm build" "other build cmd"))  ;; build commands, or () to skip
-  (test ("pnpm test" "pnpm lint"))          ;; test commands, or () to skip
-  (max-revisions 2)          ;; review-revise rounds per subtask (1-5)
-  (min-score 8)              ;; minimum reviewer score to approve (1-10)
-  (max-diff 500)             ;; max diff lines per subtask
-  (reviewer-model "sonnet")  ;; "sonnet" or "opus"
-  (auto-merge #t)            ;; #t = auto-merge PR, #f = leave for manual review
-  (track #t)                 ;; #t = commit task to git (default), #f = temporary
-  (forbidden ("file1" "file2"))  ;; files not to modify, or ()
-  (context ("file1" "file2"))    ;; reference files to read, or ()
-  (judgement "custom review criteria for the reviewer")
-  (subtasks
-    ("first subtask — precise description")
-    ("second subtask — precise description")
-    ("third subtask — precise description")))
+  (goal "what to do — clear, specific, complete")
+  (judgement "how the reviewer should verify the work is done well")
+  (max-revisions 3)
+  (min-score 8))
 ```
+
+## Fields
+
+- **goal** — What Agent A should implement. Be precise and complete.
+- **judgement** — How Agent B should verify and score. This is the most important field. Include:
+  - What success looks like
+  - What must compile / pass / not break
+  - Specific quality criteria
+  - Edge cases to check
+- **max-revisions** — How many review-revise rounds (1-5, default 3)
+- **min-score** — Minimum reviewer score to approve (1-10, default 8)
 
 ## Rules for generating
 
 - Read the project first to understand structure, language, and conventions
-- **Detect build/test commands** from the project: check CI configs (.github/workflows/), Makefile, package.json scripts, Cargo.toml, pyproject.toml, etc. Set `build` and `test` accordingly.
-- Set `build` and `test` to `()` for non-code tasks (docs, config, research)
-- Break the goal into 3-7 small, independent subtasks
-- Order subtasks by dependency (do first things first)
-- Each subtask should be completable in a single commit
-- Respect the user's explicit constraints in their goal description
-- Set higher `min-score` (9-10) when user asks for strict review
-- Set lower `max-diff` when user asks for small changes
-- Use `forbidden` to protect files the user mentions
-- Use `context` for files the user references
-- Use `judgement` to encode user's quality criteria for the reviewer
+- Focus on writing a clear goal and a thorough judgement
+- The judgement should be specific enough that a reviewer can verify without guessing
+- A weak judgement (empty or vague) means the reviewer can't catch real issues

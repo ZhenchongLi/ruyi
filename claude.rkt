@@ -232,30 +232,20 @@
       ;; Claude is ready or failed — proceed to synthesis
       [else (void)]))
 
-  ;; Synthesize into subtasks
+  ;; Synthesize into task spec
   (printf "\nSynthesizing task spec...\n")
   (define spec-prompt
     (string-append
      "A user wants to modify their project.\n\n"
      (string-join conversation-history "\n") "\n\n"
-     "Break this into small, independent subtasks that can be implemented one at a time.\n"
-     "Each subtask should be completable in a single commit.\n\n"
-     "Format (output each on its own line, then subtasks):\n\n"
-     "VALIDATE: yes or no (build/test after each subtask? yes for code, no for docs)\n"
-     "MAX_REVISIONS: <1-5> (review-revise rounds per subtask, default 2)\n"
-     "MIN_SCORE: <1-10> (minimum reviewer score to approve, default 8)\n"
-     "MAX_DIFF: <number> (max diff lines per subtask, default 500)\n"
-     "REVIEWER_MODEL: sonnet or opus (which model reviews, default sonnet)\n"
-     "AUTO_MERGE: yes or no (auto-merge PR when done, default yes)\n"
-     "FORBIDDEN: file1, file2, ... (files not to touch, or 'none')\n"
-     "CONTEXT: file1, file2, ... (reference files to read, or 'none')\n\n"
-     "OVERVIEW: one sentence summary of the full goal\n\n"
-     "SUBTASK 1: <precise description of what to do>\n"
-     "SUBTASK 2: <precise description of what to do>\n"
-     "SUBTASK 3: ...\n\n"
-     "Keep subtasks small. 3-7 subtasks is ideal. Order them by dependency.\n"
-     "Only output the parameters, OVERVIEW, and SUBTASKs. "
-     "Respect the user's explicit preferences when they specify constraints."))
+     "Create a task spec with exactly these 4 fields:\n\n"
+     "GOAL: <what to do — clear, specific, complete>\n"
+     "JUDGEMENT: <how the reviewer should verify the work is done well — include concrete acceptance criteria, what must compile/pass, what to check>\n"
+     "MAX_REVISIONS: <1-5> (review-revise rounds, default 3)\n"
+     "MIN_SCORE: <1-10> (minimum reviewer score to approve, default 8)\n\n"
+     "The JUDGEMENT is critical — it's the contract for the independent reviewer.\n"
+     "A good judgement includes: what success looks like, what must not break, specific quality criteria.\n\n"
+     "Only output these 4 fields. Nothing else."))
 
   (define-values (s-ok? spec)
     (claude-execute repo-path spec-prompt #:model "opus" #:timeout 120))

@@ -49,9 +49,6 @@
    "- Each resulting file should be under 400 lines.\n"
    "- Do NOT change any behavior — this is a pure refactor.\n"
    "- Do NOT modify test files, config files, or package.json.\n"
-   "- Keep your total diff under ~"
-   (number->string (if (task-extra tsk) (hash-ref (task-extra tsk) 'max-diff 500) 500))
-   " lines.\n"
    "- Do NOT run git add, git commit, or any git commands. Just write files — the harness handles git.\n"))
 
 (define filesize-mode

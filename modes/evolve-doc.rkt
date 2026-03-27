@@ -127,9 +127,6 @@ They are technical, skeptical, and time-poor.")
        "PRIORITY: Fix the weaknesses from the previous round's feedback above.\n"
        "")
    "\nOutput the complete new README.md content. Nothing else — no explanation, no markdown fences around it.\n"
-   "Keep your total diff under ~"
-   (number->string (if (task-extra tsk) (hash-ref (task-extra tsk) 'max-diff 500) 500))
-   " lines.\n"
    "Do NOT run git add, git commit, or any git commands. Just write the file — the harness handles git.\n"))
 
 (define evolve-doc-mode

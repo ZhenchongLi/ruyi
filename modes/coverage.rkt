@@ -70,9 +70,6 @@
    "- Cover: normal path, edge cases, error handling.\n"
    "- Use the same testing library and assertions as the reference tests.\n"
    "- Read the source file first to understand what it does.\n"
-   "- Keep your total diff under ~"
-   (number->string (if (task-extra tsk) (hash-ref (task-extra tsk) 'max-diff 500) 500))
-   " lines.\n"
    "- Do NOT run git add, git commit, or any git commands. Just write files — the harness handles git.\n\n"
    "Project context:" context))
 

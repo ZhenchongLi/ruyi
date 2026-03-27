@@ -50,9 +50,6 @@
    "- Do NOT modify test files or config files.\n"
    "- Keep changes focused — one refactoring per iteration.\n"
    "- If there's nothing meaningful to refactor, create no changes.\n"
-   "- Keep your total diff under ~"
-   (number->string (if (task-extra tsk) (hash-ref (task-extra tsk) 'max-diff 500) 500))
-   " lines.\n"
    "- Do NOT run git add, git commit, or any git commands. Just write files — the harness handles git.\n"))
 
 (define refactor-mode

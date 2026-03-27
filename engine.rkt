@@ -191,12 +191,12 @@
 
 (define (execute-one-iteration repo mode-obj tsk)
   "Implement → Review → Decide. All parameters from task spec."
-  (define max-revs     (task-param tsk 'max-revisions 2))
+  (define max-revs     (task-param tsk 'max-revisions 3))
   (define min-score    (task-param tsk 'min-score 8))
-  (define max-diff     (task-param tsk 'max-diff 500))
-  (define rev-model    (task-param tsk 'reviewer-model "sonnet"))
-  (define build-cmds   (task-param tsk 'build-commands '()))
-  (define test-cmds    (task-param tsk 'test-commands '()))
+  (define max-diff     (repo-config-max-diff-lines repo))
+  (define rev-model    "sonnet")
+  (define build-cmds   '())
+  (define test-cmds    '())
 
   (with-handlers
     ([exn:fail?
@@ -386,12 +386,7 @@
                     (if (eq? (iteration-result-status result) 'keep) "+" "-")
                     (iteration-result-detail result))
             (when (eq? (iteration-result-status result) 'keep)
-              (set! kept-tasks (cons tsk kept-tasks))
-              ;; Mark subtask as done in task folder
-              (define st-idx (task-param tsk 'subtask-index #f))
-              (define st-folder (task-param tsk 'task-folder #f))
-              (when (and st-idx st-folder)
-                (mark-done! st-folder st-idx)))
+              (set! kept-tasks (cons tsk kept-tasks)))
             (when (eq? (iteration-result-status result) 'discard)
               (set! discarded-count (add1 discarded-count)))
 
@@ -495,71 +490,45 @@
 ;; ============================================================
 
 (define (make-task-mode rtask #:task-folder [task-folder #f])
-  "Create a mode object from a ruyi-task struct. Skips completed subtasks."
-  (define all-subtasks (ruyi-task-subtasks rtask))
-  (define done-indices
-    (if task-folder (read-done task-folder) '()))
-  ;; Build indexed list, skip done ones
-  (define remaining
-    (box (for/list ([st (in-list all-subtasks)]
-                    [i (in-naturals 1)]
-                    #:when (not (member i done-indices)))
-           (cons i st))))  ; (index . description)
+  "Create a mode object from a ruyi-task struct."
+  (define done? (box #f))
 
-  (when (and task-folder (not (null? done-indices)))
-    (printf "Skipping ~a completed subtask(s)\n" (length done-indices)))
-
-  (define (select-task repo done)
-    (define rem (unbox remaining))
-    (if (null? rem)
+  (define (select-task repo _done)
+    (if (unbox done?)
         #f
-        (let* ([pair (car rem)]
-               [idx (car pair)]
-               [next (cdr pair)])
-          (set-box! remaining (cdr rem))
+        (let ([goal (ruyi-task-goal rtask)])
+          (set-box! done? #t)
           (task ""
-                (if (> (string-length next) 70)
-                    (string-append (substring next 0 70) "...")
-                    next)
+                (if (> (string-length goal) 70)
+                    (string-append (substring goal 0 70) "...")
+                    goal)
                 1
                 (make-immutable-hash
-                 (list (cons 'goal next)
-                       (cons 'overview (ruyi-task-goal rtask))
-                       (cons 'subtask-index idx)
+                 (list (cons 'goal goal)
+                       (cons 'overview goal)
                        (cons 'task-folder task-folder)
-                       (cons 'build-commands (ruyi-task-build rtask))
-                       (cons 'test-commands (ruyi-task-test rtask))
                        (cons 'max-revisions (ruyi-task-max-revisions rtask))
                        (cons 'min-score (ruyi-task-min-score rtask))
-                       (cons 'max-diff (ruyi-task-max-diff rtask))
-                       (cons 'reviewer-model (ruyi-task-reviewer-model rtask))
-                       (cons 'auto-merge (ruyi-task-auto-merge? rtask))
-                       (cons 'forbidden (ruyi-task-forbidden rtask))
-                       (cons 'context (ruyi-task-context rtask))
                        (cons 'judgement (ruyi-task-judgement rtask))))))))
 
   (define (build-prompt repo tsk)
-    (define subtask-goal (hash-ref (task-extra tsk) 'goal))
-    (define overview (hash-ref (task-extra tsk) 'overview))
+    (define goal (hash-ref (task-extra tsk) 'goal))
     (define reviewer-fb
       (if (hash-has-key? (task-extra tsk) 'reviewer-feedback)
           (hash-ref (task-extra tsk) 'reviewer-feedback) ""))
-    (define judgement (hash-ref (task-extra tsk) 'judgement ""))
-    (define ctx-files (hash-ref (task-extra tsk) 'context '()))
-    (define forbidden (hash-ref (task-extra tsk) 'forbidden '()))
+    (define forbidden (repo-config-forbidden-files repo))
+    (define context-files (repo-config-context-files repo))
 
     (define context-content
       (for/fold ([ctx ""])
-                ([cf (in-list ctx-files)])
+                ([cf (in-list context-files)])
         (define full-path (build-path (repo-config-path repo) cf))
         (if (file-exists? full-path)
             (string-append ctx "\n\n## " cf "\n\n" (file->string full-path))
             ctx)))
 
     (string-append
-     "You are implementing one step of a larger goal.\n\n"
-     "## Overall goal\n\n" overview "\n\n"
-     "## This step\n\n" subtask-goal "\n\n"
+     "## Goal\n\n" goal "\n\n"
      (if (string=? reviewer-fb "")
          ""
          (string-append "## Issues found in your previous attempt\n\n"
@@ -567,11 +536,12 @@
      "## Rules\n\n"
      "- Read relevant source files before making changes.\n"
      "- Write or update tests for code changes.\n"
-     "- Keep changes focused — ONLY do this one step.\n"
+     "- Keep changes focused on the goal.\n"
      (if (null? forbidden) ""
          (string-append "- Do NOT modify: "
                         (string-join forbidden ", ") "\n"))
-     "- Follow the project's existing patterns.\n\n"
+     "- Follow the project's existing patterns.\n"
+     "- Do NOT run git add, git commit, or any git commands. Just write files — the harness handles git.\n\n"
      (if (string=? context-content "") ""
          (string-append "## Reference files\n" context-content "\n"))))
 
@@ -580,8 +550,7 @@
 (define (evolution-loop/worktree-task repo rtask #:task-folder [task-folder #f])
   "Run evolution from a ruyi-task struct. Returns (values branch kept pr-url)."
   (define mode-obj (make-task-mode rtask #:task-folder task-folder))
-  (evolution-loop/worktree repo mode-obj
-                            #:auto-merge? (ruyi-task-auto-merge? rtask)))
+  (evolution-loop/worktree repo mode-obj))
 
 (define (run-parallel-task-evolutions repo tasks)
   "Run multiple ruyi-tasks in parallel."

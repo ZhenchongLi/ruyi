@@ -61,9 +61,8 @@ Examples:
     (unless (file-exists? tf)
       (eprintf "No task file created at ~a\n" (path->string tf))
       (exit 1))
-    ;; Commit task file to git if track is enabled
     (define task (read-ruyi-task tf))
-    (when (and (ruyi-task-track? task) (directory-exists? (build-path dir ".git")))
+    (when (directory-exists? (build-path dir ".git"))
       (with-handlers ([exn:fail? (lambda (_) (void))])
         (shell!/dir (path->string dir) "git" "add" (path->string folder))
         (shell!/dir (path->string dir) "git" "commit" "-m"
