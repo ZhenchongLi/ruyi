@@ -4,7 +4,9 @@
 
 [中文文档](README.zh-CN.md)
 
-**As you wish.** Tell Claude what you want — Ruyi makes it happen, safely.
+**As you wish.** Autonomous implement-review loops that replace the traditional dev-review workflow.
+
+Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) — the idea that AI agents can do real work in loops, not just one-shot generation. Ruyi applies this to software engineering: two independent AI agents battle over every change until quality converges.
 
 ## What it does
 
@@ -12,7 +14,7 @@
 ruyi do "add CLI support"
 ```
 
-One command. Ruyi plans with you, implements each step with Claude Code, reviews with an independent AI reviewer, commits what passes, reverts what fails. You get one clean PR.
+One command. Ruyi plans with you, then runs an autonomous loop: **Agent A implements → Agent B reviews → revise or commit**. Each round, the implementer gets better from the reviewer's feedback. Only changes that pass review get committed. You get one clean PR.
 
 ## How to use
 
@@ -109,6 +111,11 @@ Edit it, re-run with `ruyi do`. Share with your team.
 The safety invariants (atomic commit-or-revert, diff limits, dual-agent review) are too important to leave to an LLM. The engine is ~2,000 lines of Racket — readable in 10 minutes. You never write Racket — it's just the runtime.
 
 </details>
+
+## Acknowledgments
+
+- [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) — the core insight that AI agents can work in autonomous loops, doing real iterative work rather than one-shot generation. Ruyi brings this pattern to software engineering with dual-agent review.
+- [Claude Code](https://claude.ai/code) by Anthropic — the AI agent that does the actual implementation and review.
 
 ## License
 

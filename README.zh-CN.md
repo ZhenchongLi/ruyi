@@ -4,7 +4,9 @@
 
 [English](README.md) | 中文
 
-**如你所愿。** 告诉 Claude 你想要什么——如意帮你实现，安全地。
+**如你所愿。** 用自主的实现-审查循环，替代传统的 dev-review 工作流。
+
+灵感来自 [Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch)——AI agent 可以在循环中做真正的工作，而不只是一次性生成。如意将这个理念应用于软件工程：两个独立的 AI agent 对每个变更反复博弈，直到质量收敛。
 
 ## 能做什么
 
@@ -12,7 +14,7 @@
 ruyi do "添加 CLI 支持"
 ```
 
-一条命令。如意和你一起规划，用 Claude Code 逐步实现，独立 AI 审查员审核，通过的提交，失败的回滚。最终你得到一个干净的 PR。
+一条命令。如意和你一起规划，然后运行自主循环：**Agent A 实现 → Agent B 审查 → 修改或提交**。每一轮，实现者从审查者的反馈中改进。只有通过审查的变更才会被提交。最终你得到一个干净的 PR。
 
 ## 怎么用
 
@@ -109,6 +111,11 @@ ruyi version                     # 显示版本
 安全不变量（原子性提交或回滚、diff 限制、双 Agent 审查）太重要了，不能交给 LLM。引擎约 2,000 行 Racket——10 分钟可读完。你不需要写 Racket——它只是运行时。
 
 </details>
+
+## 致谢
+
+- [Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch)——核心洞察：AI agent 可以在自主循环中做真正的迭代工作，而非一次性生成。如意将这一模式引入软件工程，加入双 Agent 审查。
+- [Claude Code](https://claude.ai/code) by Anthropic——执行实现和审查的 AI agent。
 
 ## 许可证
 
