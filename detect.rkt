@@ -165,7 +165,9 @@
       'sibling
       #f
       (list (cons "raco" (cons "make" rkt-files)))  ; build: compile all .rkt in root
-      '(("raco" "test" "."))
+      (if (directory-exists? (build-path path "tests"))
+          '(("raco" "test" "tests/"))
+          '())  ; no tests dir, skip
       '())]
 
     ;; Unknown
