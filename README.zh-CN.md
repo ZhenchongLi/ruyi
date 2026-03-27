@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Language: Racket](https://img.shields.io/badge/Language-Racket-9F1D20.svg)](https://racket-lang.org/) [![Claude Code](https://img.shields.io/badge/Powered_by-Claude_Code-orange.svg)](https://claude.ai/code)
 
-[English](README.md) | 中文
+[English](README.md) | 中文 | [博客文章](https://fists.cc/posts/ai/ruyi-as-you-wish/)
 
 ## Status
 
