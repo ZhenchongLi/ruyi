@@ -264,3 +264,89 @@ This bug was invisible in normal operation. Ruyi would parse a 5-subtask plan, e
 The test caught it instantly because it asserted on the *full* parsed result, not just that parsing succeeded. This is the value of testing the round-trip: `write → read → compare` reveals mismatches that usage-based testing misses.
 
 测试立即捕获了它，因为它断言的是*完整的*解析结果，而不仅仅是解析成功。这就是往返测试的价值：`写入 → 读取 → 比较` 能揭示基于用法的测试所遗漏的不匹配。
+
+---
+
+## Bug #2: Git Diff Showed 0 Lines for New Files / Bug #2：Git Diff 对新文件显示 0 行
+
+### Discovery / 发现
+
+When Agent A implemented a subtask that required creating a new test file (`tests/test-task-file.rkt`), ruyi's engine reported `Diff: 1 lines` — effectively empty. The reviewer (Agent B) received a blank diff and rejected the work with a low score, citing "no meaningful changes." But Agent A *had* created the file — it was sitting right there in the working directory. The implementation was correct; the review infrastructure couldn't see it.
+
+当 Agent A 实现一个需要创建新测试文件（`tests/test-task-file.rkt`）的子任务时，如意引擎报告 `Diff: 1 lines`——实际上是空的。审查者（Agent B）收到了空白 diff，以"没有有意义的变更"为由给出低分并拒绝了工作。但 Agent A *确实*创建了文件——它就在工作目录里。实现是正确的；审查基础设施看不到它。
+
+The reviewer's exact complaint was the clue: an adversarial reviewer that sees an empty diff for a task asking to "create tests" will always flag the contradiction. This is precisely the kind of structural anomaly that a separate reviewer catches — an implementer working alone might assume the commit just didn't go through and retry.
+
+审查者的投诉本身就是线索：一个看到空 diff 的对抗性审查者，面对"创建测试"的任务，必然会标记这个矛盾。这恰恰是独立审查者能捕获的结构性异常——独自工作的实现者可能只会以为提交没有成功然后重试。
+
+### Root Cause / 根本原因
+
+The engine used `git diff HEAD` to measure the diff size and to capture the diff text sent to the reviewer. But `git diff HEAD` only compares the working tree against the last commit for *tracked* files. Newly created files are **untracked** — they don't exist in git's index, so `git diff HEAD` simply ignores them. The diff was legitimately empty from git's perspective: no tracked file had changed.
+
+引擎使用 `git diff HEAD` 来测量 diff 大小以及获取发送给审查者的 diff 文本。但 `git diff HEAD` 只将工作目录与最后一次提交的*已跟踪*文件进行比较。新创建的文件是**未跟踪的**——它们不存在于 git 的索引中，所以 `git diff HEAD` 直接忽略它们。从 git 的角度来看，diff 确实是空的：没有已跟踪的文件发生了变化。
+
+The relevant code path in `engine.rkt` went: implement → check forbidden files → measure diff → run build/test → get diff for review → decide. At no point between Agent A creating files and the engine reading the diff were new files staged into git's index.
+
+`engine.rkt` 中的相关代码路径是：实现 → 检查禁止文件 → 测量 diff → 运行构建/测试 → 获取 diff 供审查 → 决策。在 Agent A 创建文件和引擎读取 diff 之间，没有任何步骤将新文件暂存到 git 索引中。
+
+```
+Agent A creates tests/test-task-file.rkt     (untracked)
+         ↓
+git diff HEAD                                 (sees nothing — file not in index)
+         ↓
+Reviewer gets empty diff                      (rejects: "no changes")
+         ↓
+Ruyi reverts                                  (correct code deleted)
+```
+
+### The Fix / 修复
+
+The fix was a single addition: run `git add -A` immediately after Agent A finishes implementing, before any safety checks or review. This stages all changes — including newly created files — into the index, making them visible to `git diff HEAD`.
+
+修复方案是一处添加：在 Agent A 完成实现后、任何安全检查或审查之前，立即运行 `git add -A`。这会将所有变更——包括新创建的文件——暂存到索引中，使它们对 `git diff HEAD` 可见。
+
+**Before** (engine.rkt, `execute-one-iteration`):
+
+```racket
+;; 2. Agent A implements
+(define ok? (claude-implement repo mode-obj tsk*))
+(unless ok?
+  (git-revert! repo)
+  (raise ...))
+
+;; 3. Safety checks (git diff HEAD sees nothing for new files!)
+(define forbidden (git-check-forbidden-files repo))
+```
+
+**After** (commit 8178048):
+
+```racket
+;; 2. Agent A implements
+(define ok? (claude-implement repo mode-obj tsk*))
+(unless ok?
+  (git-revert! repo)
+  (raise ...))
+
+;; 2b. Stage all changes (so untracked new files show in diff)
+(with-handlers ([exn:fail? (lambda (_) (void))])
+  (shell! repo "git" "add" "-A"))
+
+;; 3. Safety checks (now sees everything)
+(define forbidden (git-check-forbidden-files repo))
+```
+
+The `with-handlers` wrapper ensures that if `git add -A` fails for any reason (e.g., corrupt index), the engine doesn't crash — it falls through and the review proceeds with whatever diff is available. This is a deliberate choice: a partially visible diff is better than a crash that loses the implementation.
+
+`with-handlers` 包装确保如果 `git add -A` 因任何原因失败（例如索引损坏），引擎不会崩溃——它会继续执行，审查将使用当前可用的 diff。这是一个刻意的选择：部分可见的 diff 好过崩溃丢失实现。
+
+### Why It Matters / 为什么重要
+
+This bug made ruyi structurally incapable of handling tasks that create new files — which is a large proportion of real work. Adding a test file, creating a new module, scaffolding a feature: all of these produce untracked files that `git diff HEAD` can't see.
+
+这个 bug 使如意在结构上无法处理创建新文件的任务——而这在真实工作中占很大比例。添加测试文件、创建新模块、搭建功能骨架：所有这些都会产生 `git diff HEAD` 看不到的未跟踪文件。
+
+The failure mode was especially insidious: the engine didn't error out. It reported a small diff, the reviewer scored low, the engine reverted the (correct) work, and moved on to the next attempt — which would fail the same way. From the outside, it looked like the reviewer was being too strict or Agent A was producing bad implementations. The real problem was that the review infrastructure was blind.
+
+失败模式特别阴险：引擎不会报错。它报告一个很小的 diff，审查者给出低分，引擎回滚（正确的）工作，然后进入下一次尝试——同样会失败。从外部看，像是审查者过于严格或 Agent A 产出了糟糕的实现。真正的问题是审查基础设施是盲的。
+
+The fix is two lines of code, but it required the reviewer to surface the symptom. An implementer-only workflow would have seen "reviewer rejected my work" and tried harder — never questioning whether the reviewer could actually see the work.
