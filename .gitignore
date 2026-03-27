@@ -2,8 +2,11 @@
 compiled/
 **/compiled/
 
-# Evolution logs (generated at runtime)
+# Ruyi generated files (machine-specific, auto-regenerated)
+.ruyi.rkt
+.ruyi-task
 evolution-log.tsv
+evolution-journal.md
 
 # OS
 .DS_Store
