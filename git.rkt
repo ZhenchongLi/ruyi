@@ -74,8 +74,10 @@
 
 (define (git-revert! repo)
   "Discard all working tree changes and remove untracked files."
-  (shell! repo "git" "checkout" ".")
-  (shell! repo "git" "clean" "-fd"))
+  (with-handlers ([exn:fail? (lambda (_) (void))])
+    (shell! repo "git" "checkout" "."))
+  (with-handlers ([exn:fail? (lambda (_) (void))])
+    (shell! repo "git" "clean" "-fd")))
 
 (define (git-diff-line-count repo)
   "Count lines of diff (staged + unstaged)."
