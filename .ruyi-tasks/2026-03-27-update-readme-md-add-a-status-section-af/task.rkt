@@ -1,0 +1,17 @@
+(ruyi-task
+  (goal "Add a 'Status' section to README.md after the badges indicating the project is under active development")
+  (build ())
+  (test ())
+  (max-revisions 2)
+  (min-score 8)
+  (max-diff 50)
+  (reviewer-model "sonnet")
+  (auto-merge #t)
+  (track #t)
+  (forbidden ())
+  (context ("README.md" "README.zh-CN.md"))
+  (judgement "The Status section should be concise, placed immediately after the badge line and before the Chinese doc link or tagline, and clearly communicate that the project is under active development. Tone should match the rest of the README — direct, confident, no fluff.")
+  (subtasks
+    ("Add a '## Status' section to README.md immediately after the badges line (line 3). It should briefly state that ruyi is under active development — e.g. 'This project is under active development. APIs and task file formats may change.' Keep it to 1-3 sentences.")
+    ("Add a corresponding '## 状态' section to README.zh-CN.md in the same position after badges, with equivalent Chinese text for active development status.")
+    ("Verify both READMEs remain well-structured: consistent heading hierarchy, no broken links, no formatting issues introduced by the new section.")))
