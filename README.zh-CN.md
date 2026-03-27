@@ -65,31 +65,20 @@ Racket 引擎控制每一个步骤。Claude 不会决定是提交还是回滚—
 
 ## 安装
 
-前置条件：[Claude Code](https://claude.ai/code) 和 Git。
+你需要 [Claude Code](https://claude.ai/code)。把下面这句话粘贴进去：
 
-**一行安装**（类似 oh-my-zsh）：
+> 帮我安装 ruyi: https://github.com/ZhenchongLi/ruyi/blob/main/INSTALL-PROMPT.md
+
+Claude Code 会自动检测你的环境、安装依赖、完成所有配置。支持 macOS、Linux，不依赖 brew，大陆网络也能用。
+
+随时运行 `ruyi update` 获取最新版本。
+
+<details>
+<summary>Shell 脚本安装（备选）</summary>
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
 ```
-
-或手动：
-
-```bash
-git clone https://github.com/ZhenchongLi/ruyi.git ~/.ruyi && ~/.ruyi/install.sh
-```
-
-Ruyi 会自动检查更新。运行 `ruyi update` 获取最新版本。
-
-<details>
-<summary>安装脚本做了什么</summary>
-
-1. 安装 `racket`（如果没有，通过 brew/apt）
-2. 安装 `gh`（可选，用于 GitHub issue 支持）
-3. Clone 到 `~/.ruyi`
-4. 编译 `raco make`
-5. 链接 `~/.ruyi/ruyi` 到 `~/.local/bin/ruyi`
-6. 如需要，将 `~/.local/bin` 加入 PATH
 
 </details>
 

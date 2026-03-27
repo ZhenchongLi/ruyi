@@ -65,31 +65,20 @@ The Racket engine controls every step. Claude never decides whether to commit or
 
 ## Install
 
-Prerequisites: [Claude Code](https://claude.ai/code) and Git.
+You need [Claude Code](https://claude.ai/code). Paste this into it:
 
-**One-liner** (like oh-my-zsh):
+> Install ruyi for me: https://github.com/ZhenchongLi/ruyi/blob/main/INSTALL-PROMPT.md
+
+Claude Code will detect your environment, install dependencies, and set up everything. Works on macOS, Linux, with or without brew, in mainland China or anywhere else.
+
+Run `ruyi update` anytime to pull latest.
+
+<details>
+<summary>Shell script (alternative)</summary>
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/install.sh)"
 ```
-
-Or manually:
-
-```bash
-git clone https://github.com/ZhenchongLi/ruyi.git ~/.ruyi && ~/.ruyi/install.sh
-```
-
-Ruyi auto-checks for updates. Run `ruyi update` to pull latest.
-
-<details>
-<summary>What the installer does</summary>
-
-1. Installs `racket` if missing (via brew/apt)
-2. Installs `gh` if missing (optional, for GitHub issue support)
-3. Clones to `~/.ruyi`
-4. Compiles with `raco make`
-5. Links `~/.ruyi/ruyi` to `~/.local/bin/ruyi`
-6. Adds `~/.local/bin` to PATH if needed
 
 </details>
 
