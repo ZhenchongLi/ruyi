@@ -35,6 +35,26 @@ ruyi do                          # 重跑最近的任务
 ruyi pdo "X" // "Y" // "Z"      # 并行做多件事
 ```
 
+## 在 Claude Code 中使用
+
+如果你用 [Claude Code](https://claude.ai/code)，如意提供了 `/ruyi` 斜杠命令，把你的对话变成任务定义工作流：
+
+```
+你：     /ruyi 添加暗色模式
+Claude:  [阅读你的代码库，提出 goal + judgement]
+你：     judgement 更严格一点——也检查对比度
+Claude:  [更新 task.rkt，后台运行 ruyi do]
+你：     侧边栏组件也处理一下        ← 继续聊
+Claude:  [编辑 task.rkt — 下次迭代生效]
+```
+
+工作流：
+1. **讨论** — Claude 通过对话帮你定义 goal 和 judgement
+2. **写入** — Claude 写 `task.rkt`，后台运行 `ruyi do`
+3. **调整** — 继续聊天。让 Claude 修改 goal 或 judgement；它实时编辑 `task.rkt`。运行中的如意每轮迭代重新读取。
+
+你留在对话里。如意在后台干活。
+
 ## 安装
 
 你需要 [Claude Code](https://claude.ai/code)。把下面这句话粘贴进去：
@@ -62,21 +82,16 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
        ├─ Claude Code 交互式规划
        │  → 生成 .ruyi-tasks/<日期>-<摘要>/task.rkt
        │
-       ├─ 每个子任务：
+       ├─ 实现-审查循环：
        │    Agent A (Claude Code) 实现  ← 完整能力：读文件、写代码、跑测试
        │    Agent B (独立) 审查         ← 对抗性，找问题
-       │    构建/测试失败？→ 错误信息反馈给 Agent A，重试
+       │    分数 < 阈值？→ 反馈给 Agent A，修订
        │    如意裁决：提交 / 修改 / 回滚
-       │    ✓ 提交 → 标记完成，下一个子任务继承状态
-       │
-       ├─ 重跑？自动跳过已完成的子任务，从断点继续
        │
        └─ 推送 + PR（或本地合并）
 ```
 
 两个独立 AI agent——一个实现，一个审查。它们看不到彼此的推理过程。如意是裁判。
-
-子任务在同一个 worktree 中顺序执行——每个都能看到前一个的改动。重跑 `ruyi do` 会自动从断点继续。
 
 ## Claude Code + 如意
 
@@ -101,12 +116,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
 
 ## 安全契约
 
-- **原子性提交或回滚** ——每个子任务要么通过并提交，要么完整回滚
+- **原子性提交或回滚** ——任务要么通过审查并提交，要么完整回滚
 - **双 Agent 审查** ——实现者和审查者独立、对抗
-- **构建/测试失败触发修订** ——错误信息反馈给 Agent A 重试，而非直接拒绝
 - **Worktree 隔离** ——每个任务在独立的 git worktree 中运行，不碰你的工作目录
-- **可续跑** ——重跑任务自动跳过已完成的子任务
-- **所有参数由你掌控** ——分数阈值、diff 限制、修改轮数、构建/测试命令，全部通过自然语言控制
+- **所有参数由你掌控** ——分数阈值、diff 限制、修改轮数，全部通过自然语言控制
 
 ## 全部命令
 
@@ -132,25 +145,17 @@ ruyi version                     # 显示版本
 ```
 .ruyi-tasks/2026-03-27-improve-docs/
   task.rkt     ← 任务定义（可读、可编辑、git 跟踪）
-  done.txt     ← 已完成的子任务序号（自动管理）
 ```
-
-任务文件格式：
 
 ```racket
 (ruyi-task
   (goal "提高文档质量")
-  (build ())                              ;; 构建命令，() 跳过
-  (test ())                               ;; 测试命令，() 跳过
-  (max-revisions 2)                       ;; 每个子任务的审查-修订轮数
-  (min-score 8)                           ;; 审查者通过阈值
   (judgement "关注清晰度，面向 HN 读者")
-  (subtasks
-    ("编写中英双语 README")
-    ("添加架构图和说明")))
+  (max-revisions 3)                       ;; 审查-修订轮数
+  (min-score 8))                          ;; 审查者通过阈值
 ```
 
-编辑 `task.rkt`，`ruyi do` 重跑。删除 `done.txt` 从头开始。可以分享给团队。
+编辑 `task.rkt`，`ruyi do` 重跑。修改下次迭代生效。可以分享给团队。
 
 <details>
 <summary>为什么选择 Racket？</summary>

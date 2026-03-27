@@ -35,6 +35,26 @@ ruyi do                          # re-run latest task
 ruyi pdo "X" // "Y" // "Z"      # do multiple things in parallel
 ```
 
+## Use inside Claude Code
+
+If you use [Claude Code](https://claude.ai/code), Ruyi has a `/ruyi` slash command that turns your conversation into a task definition workflow:
+
+```
+You:     /ruyi add dark mode support
+Claude:  [reads your codebase, proposes goal + judgement]
+You:     make the judgement stricter — check contrast ratios too
+Claude:  [updates task.rkt, runs ruyi do in background]
+You:     also handle the sidebar component        ← keep chatting
+Claude:  [edits task.rkt — changes take effect next iteration]
+```
+
+The workflow:
+1. **Discuss** — Claude helps you define goal and judgement through conversation
+2. **Write** — Claude writes `task.rkt` and runs `ruyi do` in the background
+3. **Steer** — Keep chatting. Ask Claude to adjust goal or judgement; it edits `task.rkt` live. The running Ruyi re-reads it each iteration.
+
+You stay in your conversation. Ruyi works in the background.
+
 ## Install
 
 You need [Claude Code](https://claude.ai/code). Paste this into it:
@@ -62,21 +82,16 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ZhenchongLi/ruyi/main/in
        ├─ Claude Code plans with you interactively
        │  → generates .ruyi-tasks/<date>-<slug>/task.rkt
        │
-       ├─ For each subtask:
+       ├─ Implement-review loop:
        │    Agent A (Claude Code) implements  ← full agent: reads, writes, tests
        │    Agent B (independent) reviews     ← adversarial, finds issues
-       │    Build/test fails? → feedback to Agent A, retry
+       │    Score < threshold? → feedback to Agent A, revise
        │    Ruyi decides: commit / revise / revert
-       │    ✓ committed → marked done, next subtask inherits state
-       │
-       ├─ Re-run? Auto-skips completed subtasks, continues where it left off
        │
        └─ Push + PR (or local merge)
 ```
 
 Two independent AI agents — one implements, one reviews. They never see each other's reasoning. Ruyi is the referee.
-
-Subtasks run sequentially in the same worktree — each one sees the previous one's changes. Re-running `ruyi do` on the same task auto-continues from where it stopped.
 
 ## Claude Code + Ruyi
 
@@ -101,12 +116,10 @@ Ruyi handles worktree isolation, iterative review, and safe commit/revert.
 
 ## The safety contract
 
-- **Atomic commit-or-revert** — every subtask either passes and commits, or reverts completely
+- **Atomic commit-or-revert** — the task either passes review and commits, or reverts completely
 - **Dual-agent review** — implementer and reviewer are independent, adversarial
-- **Build/test failures trigger revision** — error messages feed back to Agent A for retry, not immediate rejection
 - **Worktree isolation** — each task runs in its own git worktree, never touches your working directory
-- **Resumable** — re-running a task auto-skips completed subtasks
-- **All parameters in your hands** — score thresholds, diff limits, revision rounds, build/test commands, all controllable through natural language
+- **All parameters in your hands** — score thresholds, diff limits, revision rounds, all controllable through natural language
 
 ## All commands
 
@@ -132,23 +145,17 @@ Every `ruyi do` generates a `.ruyi-tasks/` folder:
 ```
 .ruyi-tasks/2026-03-27-improve-docs/
   task.rkt     ← task definition (human-readable, editable, git-tracked)
-  done.txt     ← completed subtask indices (auto-managed)
 ```
 
 ```racket
 (ruyi-task
   (goal "improve documentation")
-  (build ())                              ;; build commands, or () to skip
-  (test ())                               ;; test commands, or () to skip
-  (max-revisions 2)                       ;; review-revise rounds per subtask
-  (min-score 8)                           ;; reviewer approval threshold
   (judgement "focus on clarity for HN readers")
-  (subtasks
-    ("Write bilingual README")
-    ("Add architecture diagram")))
+  (max-revisions 3)                       ;; review-revise rounds
+  (min-score 8))                          ;; reviewer approval threshold
 ```
 
-Edit `task.rkt`, re-run with `ruyi do`. Delete `done.txt` to restart from scratch. Share with your team.
+Edit `task.rkt`, re-run with `ruyi do`. Changes take effect on the next iteration. Share with your team.
 
 <details>
 <summary>Why Racket?</summary>
