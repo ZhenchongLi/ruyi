@@ -69,7 +69,8 @@
    "- ONLY create the test file. Do NOT modify any source files.\n"
    "- Cover: normal path, edge cases, error handling.\n"
    "- Use the same testing library and assertions as the reference tests.\n"
-   "- Read the source file first to understand what it does.\n\n"
+   "- Read the source file first to understand what it does.\n"
+   "- Do NOT run git add, git commit, or any git commands. Just write files — the harness handles git.\n\n"
    "Project context:" context))
 
 (define coverage-mode

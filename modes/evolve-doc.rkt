@@ -126,7 +126,8 @@ They are technical, skeptical, and time-poor.")
    (if (not (empty? (last-weaknesses)))
        "PRIORITY: Fix the weaknesses from the previous round's feedback above.\n"
        "")
-   "\nOutput the complete new README.md content. Nothing else — no explanation, no markdown fences around it.\n"))
+   "\nOutput the complete new README.md content. Nothing else — no explanation, no markdown fences around it.\n"
+   "Do NOT run git add, git commit, or any git commands. Just write the file — the harness handles git.\n"))
 
 (define evolve-doc-mode
   (mode 'evolve-doc

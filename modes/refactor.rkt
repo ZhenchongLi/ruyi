@@ -49,7 +49,8 @@
    "- Do NOT change any external behavior.\n"
    "- Do NOT modify test files or config files.\n"
    "- Keep changes focused — one refactoring per iteration.\n"
-   "- If there's nothing meaningful to refactor, create no changes.\n"))
+   "- If there's nothing meaningful to refactor, create no changes.\n"
+   "- Do NOT run git add, git commit, or any git commands. Just write files — the harness handles git.\n"))
 
 (define refactor-mode
   (mode 'refactor

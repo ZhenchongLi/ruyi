@@ -165,7 +165,8 @@
      "- Keep changes focused — ONLY do this one step, nothing more.\n"
      "- Do NOT modify: "
      (string-join (repo-config-forbidden-files repo) ", ") "\n"
-     "- Follow the project's existing patterns and conventions.\n\n"
+     "- Follow the project's existing patterns and conventions.\n"
+     "- Do NOT run git add, git commit, or any git commands. Just write files — the harness handles git.\n\n"
      "## Project context\n" context-content))
 
   (mode 'freestyle
