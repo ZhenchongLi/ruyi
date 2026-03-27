@@ -58,7 +58,7 @@
 (define (claude-agent repo-path-raw prompt
                        #:model [model DEFAULT-MODEL]
                        #:timeout [timeout (* CLAUDE-TIMEOUT 2)])
-  "Call claude in full agent mode (reads files, runs commands, iterates).
+  "Call claude -p in full agent mode (non-interactive, reads files, runs commands).
    Returns (values success? output)."
   (define repo-path
     (if (string? repo-path-raw) (string->path repo-path-raw) repo-path-raw))
@@ -72,7 +72,6 @@
 
   (define proxy-env (build-proxy-env))
 
-  ;; Full agent mode: no -p, Claude Code uses all tools
   (define cmd
     (format "~a cd ~a && ~a --dangerously-skip-permissions --model ~a -p < ~a > ~a 2> ~a"
             proxy-env
@@ -96,6 +95,26 @@
   (if exit-code
       (values (zero? exit-code) output)
       (values #f "TIMEOUT")))
+
+(define (claude-interactive repo-path-raw initial-prompt)
+  "Launch Claude Code interactively — user can chat, Claude can read/write files.
+   Claude takes over the terminal. Returns exit code (0 = success)."
+  (define repo-path
+    (if (string? repo-path-raw) (string->path repo-path-raw) repo-path-raw))
+
+  (define proxy-env (build-proxy-env))
+
+  ;; Interactive: no -p, no stdin/stdout redirect. Claude owns the terminal.
+  (define cmd
+    (format "~a cd ~a && ~a --dangerously-skip-permissions --model ~a ~a"
+            proxy-env
+            (path->string repo-path)
+            (path->string CLAUDE-PATH)
+            DEFAULT-MODEL
+            (shell-quote initial-prompt)))
+
+  (parameterize ([current-directory repo-path])
+    (system/exit-code (format "/bin/bash -c ~a" (shell-quote cmd)))))
 
 ;; ============================================================
 ;; Shared helpers

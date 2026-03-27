@@ -48,16 +48,16 @@ Examples:
     (dynamic-require config-module 'local-config))
 
   (define (generate-task-file dir goal)
-    "Use Claude Code (full agent mode) to generate .ruyi-task."
-    (printf "Planning with Claude Code...\n")
+    "Launch Claude Code interactively to plan and generate .ruyi-task."
     (define repo (ensure-project dir))
     (define prompt (task-generation-prompt goal))
-    (define-values (ok? output)
-      (claude-agent (repo-config-path repo) prompt))
-    (unless ok?
-      (eprintf "Planning failed. Try again or create .ruyi-task manually.\n")
-      (exit 1))
-    ;; Claude Code should have written .ruyi-task directly
+    (define exit-code (claude-interactive (repo-config-path repo) prompt))
+    (unless (zero? exit-code)
+      (eprintf "Planning session ended. ")
+      (define task-path (build-path dir TASK-FILE))
+      (unless (file-exists? task-path)
+        (eprintf "No .ruyi-task created.\n")
+        (exit 1)))
     (define task-path (build-path dir TASK-FILE))
     (unless (file-exists? task-path)
       (eprintf "Claude Code did not create .ruyi-task. Try again.\n")
