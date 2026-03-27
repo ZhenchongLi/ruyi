@@ -474,3 +474,61 @@ The same bug affected `track`, which controls whether the task file is committed
 The test that caught this was straightforward — just parse a file with `#f` values and check they come back as `#f`. But writing it required the insight that `#f` plays double duty in Racket as both a boolean and a common default. Agent B's review of the initial test suite flagged the missing edge case: "no test covers explicit `#f` for boolean fields." That observation led directly to the test, the failure, and the fix.
 
 捕获这个 bug 的测试很简单——只需解析一个包含 `#f` 值的文件并检查它们是否作为 `#f` 返回。但编写它需要理解 `#f` 在 Racket 中同时充当布尔值和常见默认值的双重角色。Agent B 在审查初始测试套件时标记了缺失的边缘情况："没有测试覆盖布尔字段的显式 `#f`。"这个观察直接导致了测试、失败和修复。
+
+---
+
+## Conclusion: The Value of Dual-Agent Review / 结论：双代理审查的价值
+
+### Adversarial Review Catches Real Bugs / 对抗性审查捕获真实 Bug
+
+The three bugs documented above share a pattern: Agent A (the implementer) either introduced them or had no reason to look for them. A single-agent workflow — implement, test what you think matters, commit — would have missed all three.
+
+以上记录的三个 bug 有一个共同模式：Agent A（实现者）要么引入了它们，要么没有理由去寻找它们。单代理工作流——实现、测试你认为重要的、提交——会遗漏所有三个。
+
+**Bug #1** (subtask truncation): Agent A wrote tests that matched the format `write-ruyi-task` produces. It had no reason to test a format it didn't generate. Agent B flagged incomplete edge-case coverage, which led to testing the format Claude Code *actually* generates — and exposed the parser's blind spot.
+
+**Bug #1**（子任务截断）：Agent A 编写的测试匹配 `write-ruyi-task` 产生的格式。它没有理由去测试自己不生成的格式。Agent B 标记了不完整的边缘情况覆盖，这导致了对 Claude Code *实际*生成格式的测试——暴露了解析器的盲点。
+
+**Bug #2** (empty diff for new files): Agent A created the test file correctly. From its perspective, the job was done. It was Agent B who saw the contradiction — a task that asked "create tests" paired with a diff showing zero changes — and rejected it. That rejection forced investigation into *why* the diff was empty, revealing the missing `git add -A` step.
+
+**Bug #2**（新文件空 diff）：Agent A 正确地创建了测试文件。从它的角度来看，工作已完成。是 Agent B 看到了矛盾——一个要求"创建测试"的任务配上一个显示零变更的 diff——并拒绝了它。这个拒绝迫使调查 diff *为什么*是空的，揭示了缺失的 `git add -A` 步骤。
+
+**Bug #3** (boolean `#f` as `#t`): Agent A's initial tests checked that fields parsed correctly when present with truthy values. Agent B's review noted: "no test covers explicit `#f` for boolean fields." That single observation produced the test that broke the parser.
+
+**Bug #3**（布尔 `#f` 变 `#t`）：Agent A 最初的测试检查了字段在以真值存在时是否正确解析。Agent B 的审查指出："没有测试覆盖布尔字段的显式 `#f`。"这一个观察产生了打破解析器的测试。
+
+The information barrier is what makes this work. Agent B never sees Agent A's reasoning, plan, or conversation history. It sees only the diff and the task description. This means it cannot inherit the implementer's assumptions about what "should" work. When Agent A assumes `cadr` is sufficient because it tested with one format, Agent B doesn't share that assumption — it evaluates the diff on its own terms and asks "what about other formats?"
+
+信息屏障是这一切生效的关键。Agent B 从不看到 Agent A 的推理、计划或对话历史。它只看到 diff 和任务描述。这意味着它无法继承实现者关于什么"应该"有效的假设。当 Agent A 假设 `cadr` 足够因为它用一种格式测试过，Agent B 不共享这个假设——它用自己的标准评估 diff 并问"其他格式呢？"
+
+### Not Ceremony — Structural Necessity / 不是仪式——结构性必需
+
+It's tempting to view code review as overhead — a checkbox before merging. The self-testing experiment shows it is structurally load-bearing. Remove the reviewer, and all three bugs ship:
+
+人们很容易将代码审查视为开销——合并前的一个勾选框。自测实验表明它在结构上是承重的。移除审查者，三个 bug 全部发布：
+
+- Tasks silently execute only their first subtask
+- New files are created but invisible to the review pipeline, leading to false rejections and wasted retries
+- Users' explicit `#f` opt-outs are silently overridden to `#t`
+
+- 任务静默只执行第一个子任务
+- 新文件被创建但对审查流水线不可见，导致误拒和浪费的重试
+- 用户显式的 `#f` 关闭选项被静默覆盖为 `#t`
+
+The dual-agent design costs one additional Claude call per subtask (the review). In exchange, it provides an independent check that shares no state with the implementer. The cost is linear; the value is in catching bugs that a single agent systematically cannot find in its own work.
+
+双代理设计每个子任务多花一次 Claude 调用（审查）。作为交换，它提供了一个与实现者不共享任何状态的独立检查。成本是线性的；价值在于捕获单一代理在自己的工作中系统性无法发现的 bug。
+
+### A Note on Self-Referential Testing / 关于自指测试的思考
+
+There is something recursive about a tool finding bugs in itself. Ruyi's implement-review-revise loop was the mechanism that discovered that the same loop had a staging bug (Bug #2), that its task parser silently truncated data (Bug #1), and that its boolean handling was fundamentally broken (Bug #3). The tool was both the surgeon and the patient.
+
+一个工具在自身中发现 bug，这件事有某种递归的意味。如意的实现-审查-修订循环是发现同一循环有暂存 bug（Bug #2）、任务解析器静默截断数据（Bug #1）、布尔处理根本性错误（Bug #3）的机制。这个工具既是外科医生又是病人。
+
+This works precisely because the dual-agent architecture creates genuine independence. Agent B reviewing Agent A's work on ruyi is no different from Agent B reviewing Agent A's work on any other codebase — it sees a diff, it finds problems. The self-referential nature doesn't weaken the process; if anything, it stress-tests it. If the review loop can find bugs in *its own implementation*, it can likely find bugs anywhere.
+
+这之所以行得通，恰恰是因为双代理架构创造了真正的独立性。Agent B 审查 Agent A 在如意上的工作，与 Agent B 审查 Agent A 在任何其他代码库上的工作没有区别——它看到 diff，它找到问题。自指性质不会削弱这个过程；如果有什么区别的话，它反而是一种压力测试。如果审查循环能在*自身的实现*中找到 bug，它很可能在任何地方都能找到 bug。
+
+The practical takeaway: if you build a system that orchestrates AI agents, point it at itself early. The bugs it finds will be real, and the act of self-testing validates the architecture in a way that testing on external codebases alone cannot.
+
+实用的启示：如果你构建了一个编排 AI 代理的系统，尽早让它指向自己。它发现的 bug 将是真实的，而自测行为以一种仅在外部代码库上测试无法实现的方式验证了架构。
